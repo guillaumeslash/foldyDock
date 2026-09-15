@@ -1,0 +1,179 @@
+import AppKit
+import SwiftUI
+
+@main
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var dockPanel: DockPanel?
+    private var viewModel: DockViewModel?
+    private var statusItem: NSStatusItem?
+
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.run()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Run as accessory app: no icon in standard macOS Dock
+        NSApp.setActivationPolicy(.accessory)
+
+        let vm = DockViewModel()
+        self.viewModel = vm
+
+        let initialDockHeight = vm.config.iconSize + 40
+        var pendingDockSize: CGSize?
+
+        let containerView = DockContainerView(viewModel: vm) { [weak self] newSize in
+            if let panel = self?.dockPanel {
+                let adjustedWidth = max(newSize.width + 16, 200)
+                panel.updateDockSize(width: adjustedWidth, height: newSize.height)
+            } else {
+                pendingDockSize = newSize
+            }
+        }
+
+        let hostingView = ClickThroughHostingView(rootView: containerView)
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = .clear
+
+        let panel = DockPanel(contentView: hostingView, initialDockHeight: initialDockHeight)
+        panel.autohideEnabled = vm.config.autohideEnabled
+        panel.autohideDelay = vm.config.autohideDelay
+        setupMiddleClickMonitor(hostingView: hostingView)
+        panel.shouldPreventAutoHide = { [weak vm] in
+            guard let vm = vm else { return false }
+            if NSEvent.pressedMouseButtons == 0 && vm.dragSourceId != nil {
+                vm.clearDropState()
+            }
+            return vm.activeFolder != nil || vm.dragSourceId != nil || vm.activeDropTargetId != nil || vm.isResizing
+        }
+
+        self.dockPanel = panel
+
+        if let size = pendingDockSize {
+            let adjustedWidth = max(size.width + 16, 200)
+            panel.updateDockSize(width: adjustedWidth, height: size.height)
+        }
+
+        panel.orderFront(nil)
+        panel.reposition()
+
+        setupMenuBarStatusItem()
+        setupScreenChangeObserver()
+    }
+
+    private func setupMenuBarStatusItem() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let button = statusItem?.button {
+            button.image = NSImage(systemSymbolName: "dock.rectangle", accessibilityDescription: "FolderDock")
+        }
+
+        let menu = NSMenu()
+        menu.addItem(NSMenuItem(title: "FolderDock v1.0", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem.separator())
+
+        let showItem = NSMenuItem(title: "Afficher le Dock", action: #selector(showDockAction), keyEquivalent: "d")
+        showItem.target = self
+        menu.addItem(showItem)
+
+        let toggleAutohide = NSMenuItem(title: "Masquage automatique (Autohide)", action: #selector(toggleAutohideAction), keyEquivalent: "")
+        toggleAutohide.target = self
+        toggleAutohide.state = (viewModel?.config.autohideEnabled ?? true) ? .on : .off
+        menu.addItem(toggleAutohide)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let resetItem = NSMenuItem(title: "Réinitialiser les applications par défaut", action: #selector(resetDockAction), keyEquivalent: "")
+        resetItem.target = self
+        menu.addItem(resetItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let quitItem = NSMenuItem(title: "Quitter FolderDock", action: #selector(quitAction), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        statusItem?.menu = menu
+    }
+
+    @objc private func showDockAction() {
+        dockPanel?.showDock(animated: true)
+    }
+
+    @objc private func toggleAutohideAction(_ sender: NSMenuItem) {
+        guard let vm = viewModel, let panel = dockPanel else { return }
+        vm.config.autohideEnabled.toggle()
+        panel.autohideEnabled = vm.config.autohideEnabled
+        sender.state = vm.config.autohideEnabled ? .on : .off
+        DockPersistenceService.shared.saveConfig(vm.config)
+    }
+
+    @objc private func resetDockAction() {
+        guard let vm = viewModel else { return }
+        vm.config = DockConfig.defaultConfig
+        vm.items = vm.config.items
+        DockPersistenceService.shared.saveConfig(vm.config)
+        dockPanel?.reposition()
+    }
+
+    @objc private func quitAction() {
+        NSApp.terminate(nil)
+    }
+
+    private func setupMiddleClickMonitor(hostingView: NSView) {
+        NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { [weak self, weak hostingView] event in
+            guard let self = self, event.buttonNumber == 2, let window = event.window else {
+                return event
+            }
+
+            // Case 1: Middle-click on main dock panel
+            if window == self.dockPanel, let hosting = hostingView {
+                let pointInView = hosting.convert(event.locationInWindow, from: nil)
+                self.viewModel?.handleMiddleClick(at: pointInView)
+                return nil
+            }
+
+            // Case 2: Middle-click on a folder popover window
+            if let vm = self.viewModel, vm.activeFolder != nil, let contentView = window.contentView {
+                let hosting = self.findHostingView(in: contentView) ?? contentView
+                let pointInView = hosting.convert(event.locationInWindow, from: nil)
+                vm.handleFolderMiddleClick(at: pointInView)
+                return nil
+            }
+
+            return event
+        }
+    }
+
+    private func findHostingView(in view: NSView) -> NSView? {
+        if NSStringFromClass(type(of: view)).contains("NSHostingView") {
+            return view
+        }
+        for subview in view.subviews {
+            if let found = findHostingView(in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    private func setupScreenChangeObserver() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.dockPanel?.reposition()
+            }
+        }
+    }
+}
+
+public final class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
+    override public func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
+    }
+}
