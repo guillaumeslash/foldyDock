@@ -25,24 +25,16 @@ public final class DockViewModel: ObservableObject {
     private var bounceTimers: [UUID: DispatchWorkItem] = [:]
 
     @Published public var lastRightClickLocation: CGPoint?
-    @Published public var activeSettingsItemId: UUID?
     public var onAutohideToggled: ((Bool) -> Void)?
     public var onResetDock: (() -> Void)?
+    public var onOpenSettingsWindow: (() -> Void)?
 
-    public func toggleSettings(for item: DockItem) {
-        if activeSettingsItemId == item.id {
-            activeSettingsItemId = nil
-        } else {
-            closeFolderPopover()
-            activeSettingsItemId = item.id
-        }
-    }
-
-    public func closeSettings() {
-        activeSettingsItemId = nil
+    public func openSettingsWindow() {
+        onOpenSettingsWindow?()
     }
 
     @Published public var isResizing: Bool = false
+    @Published public var isTrashEmpty: Bool = true
     public static let minIconSize: Double = 32.0
     public static let maxIconSize: Double = 96.0
     private var initialDragIconSize: Double?
@@ -66,10 +58,12 @@ public final class DockViewModel: ObservableObject {
         self.persistenceService = persistenceService
         self.appObserver = appObserver
         self.config = persistenceService.loadConfig()
-        self.items = self.config.items
+        self.items = self.config.items.filter { $0.type != .settings }
 
         setupAppObserverCallbacks()
         synchronizeRunningUnpinnedApps()
+        updateTrashStatus()
+        setupTrashTimer()
     }
 
     private func setupAppObserverCallbacks() {
@@ -240,7 +234,6 @@ public final class DockViewModel: ObservableObject {
         if activeFolder?.id == item.id {
             closeFolderPopover()
         } else {
-            activeSettingsItemId = nil
             activeFolder = item
         }
     }
@@ -619,17 +612,6 @@ public final class DockViewModel: ObservableObject {
         saveConfig()
     }
 
-    public func insertSettingsItem(at index: Int) {
-        let safeIndex = max(0, min(index, items.count))
-        let settings = DockItem(
-            type: .settings,
-            title: "Paramètres FoldyDock",
-            isPinned: true
-        )
-        items.insert(settings, at: safeIndex)
-        saveConfig()
-    }
-
     public func toggleAutohide() {
         config.autohideEnabled.toggle()
         onAutohideToggled?(config.autohideEnabled)
@@ -638,13 +620,83 @@ public final class DockViewModel: ObservableObject {
 
     public func resetToDefaults() {
         config = DockConfig.defaultConfig
-        items = config.items
+        items = config.items.filter { $0.type != .settings }
         saveConfig()
         onResetDock?()
     }
 
+    public func toggleTrash() {
+        config.showTrash.toggle()
+        saveConfig()
+    }
+
+    private func setupTrashTimer() {
+        Timer.publish(every: 3.0, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                self?.updateTrashStatus()
+            }
+            .store(in: &cancellables)
+    }
+
+    public func updateTrashStatus() {
+        guard let trashURL = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first else {
+            isTrashEmpty = true
+            return
+        }
+
+        var statBuf = stat()
+        let empty: Bool
+        if stat(trashURL.path, &statBuf) == 0 {
+            // On APFS, an empty directory has st_size <= 64 (representing . and .. entries)
+            empty = statBuf.st_size <= 64
+        } else {
+            empty = true
+        }
+
+        if isTrashEmpty != empty {
+            isTrashEmpty = empty
+        }
+    }
+
+    public func openTrash() {
+        if let trashURL = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first {
+            NSWorkspace.shared.open(trashURL)
+        }
+        updateTrashStatus()
+    }
+
+    public func emptyTrash() {
+        // Try Finder scripting first (handles external volumes as well)
+        let script = NSAppleScript(source: "tell application \"Finder\" to empty trash")
+        var error: NSDictionary?
+        let result = script?.executeAndReturnError(&error)
+
+        // Fallback or complement with direct deletion if Finder didn't run
+        if result == nil || error != nil {
+            if let trashURL = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first {
+                let items = (try? FileManager.default.contentsOfDirectory(at: trashURL, includingPropertiesForKeys: nil)) ?? []
+                for item in items {
+                    try? FileManager.default.removeItem(at: item)
+                }
+            }
+        }
+
+        updateTrashStatus()
+    }
+
+    public func dropOnTrash(sourceId: UUID) {
+        if let index = items.firstIndex(where: { $0.id == sourceId }) {
+            items.remove(at: index)
+            saveConfig()
+        } else if let unpinned = unpinnedRunningItems.first(where: { $0.id == sourceId }) {
+            terminate(item: unpinned)
+        }
+        updateTrashStatus()
+    }
+
     public func saveConfig() {
-        config.items = items
+        config.items = items.filter { $0.type != .settings }
         persistenceService.saveConfig(config)
     }
 }

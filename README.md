@@ -29,21 +29,26 @@
    - **Protection anti-masquage & Persistance :** Le masquage automatique est suspendu pendant le glissement, et la nouvelle taille (`iconSize`) est sauvegardée automatiquement dans `config.json`.
 
 5. **Interactions Souris & Contrôles Avancés**
-   - **Clic gauche :** Lance l'application ou l'amène au premier plan via `NSWorkspace`.
-   - **Clic milieu (`otherMouseDown` avec `buttonNumber == 2`) :** Ferme immédiatement l'application ciblée via `NSRunningApplication.terminate()`.
-   - **Clic droit :** Menu contextuel complet (« Ouvrir », « Quitter l'application », « Conserver dans le dock », « Renommer », « Dissocier le dossier »).
+   - **Clic gauche :** Lance l'application ou l'amène au premier plan via `NSWorkspace`, avec animation de saut/rebond (`BouncingModifier`). Si l'application se trouve dans un dossier fermé, le dossier rebondit pour signaler le lancement.
+   - **Clic milieu (`otherMouseDown` avec `buttonNumber == 2`) :** Ferme immédiatement l'application ciblée via `NSRunningApplication.terminate()`. Fonctionne également directement sur une sous-application depuis l'icône du dossier.
+   - **Clic droit sur un élément :** Menu contextuel complet (« Ouvrir », « Quitter l'application », « Conserver dans le dock », « Renommer », « Dissocier le dossier », « Supprimer le séparateur »).
+   - **Clic droit sur le fond du dock :** Ouvre le menu contextuel permettant d'accéder directement à la fenêtre dédiée des réglages (« Paramètres FoldyDock… »), d'ajouter un séparateur visuel ou de créer un dossier vide.
    - **Glisser-déposer (Drag & Drop) :**
      - Survol central (anneau de fusion bleu) : Fusionne en dossier.
      - Déplacement latéral : Réorganise l'ordre des éléments sur l'axe horizontal.
 
-6. **Surveillance des Processus & Épinglage**
+6. **Surveillance des Processus, Épinglage, Corbeille & Éléments Spéciaux**
    - Suivi en temps réel des applications actives (`NSWorkspace.shared.notificationCenter`).
+   - Badge d'épinglage visuel discret en verre liquide (`PinBadgeView`) sur le coin supérieur droit des applications et dossiers épinglés.
    - Séparateur vertical visuel distinguant les applications épinglées des applications ouvertes temporaires.
+   - Possibilité d'insérer des séparateurs manuels (`.separator`) pour organiser son dock en sections.
+   - **Corbeille native à l'extrémité droite (`TrashItemView`) :** Affiche l'icône native de la corbeille macOS tout à droite du dock (séparée par un diviseur). Un clic gauche l'ouvre dans le Finder, un clic droit permet de l'ouvrir ou de la vider. Y déposer un élément par glisser-déposer supprime l'élément du dock ou ferme l'application. Son affichage peut être masqué ou réactivé depuis la fenêtre des paramètres.
    - Indicateur d'activité (pastille lumineuse) sous l'icône de chaque application ou dossier contenant une application active.
 
-7. **Persistance JSON & Menu Bar**
-   - Configuration sauvegardée de manière atomique dans `~/Library/Application Support/FoldyDock/config.json`.
-   - Icône discrète dans la barre des menus macOS permettant d'afficher le dock, d'activer/désactiver l'autohide, de réinitialiser la disposition d'origine ou de quitter l'application.
+7. **Fenêtre Dédiée de Paramètres, Persistance JSON & Menu Bar**
+   - **Fenêtre Dédiée de Réglages (`FoldyDockSettingsView` & `SettingsWindowController`) :** Accessible depuis le menu de la barre de menus macOS (« Paramètres FoldyDock… ») ou via un clic droit sur un espace vide du dock. Permet d'ajuster en direct la taille des icônes (32 à 96 pt avec raccourcis de presets), l'autohide et son délai de rétraction (0,1 à 1,5 s), d'activer/désactiver la corbeille, d'insérer séparateurs ou dossiers, de réinitialiser la disposition d'origine ou de quitter l'application.
+   - Configuration sauvegardée de manière atomique dans `~/Library/Application Support/FoldyDock/config.json` (avec migration automatique depuis `FolderDock` si présent).
+   - Icône dans la barre des menus macOS : un clic déploie le menu complet intégrant l'accès aux « Paramètres FoldyDock… » (raccourci ⌘,), l'affichage forcé du Dock, le basculement rapide de l'autohide, la réinitialisation et l'arrêt de l'application.
 
 ---
 
@@ -73,24 +78,32 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ## 📁 Architecture du Code
 
 - **`Sources/FoldyDock/`**
-  - `Main.swift` : Point d'entrée `@main`, cycle de vie `NSApplicationDelegate`, barre des menus.
+  - `Main.swift` : Point d'entrée `@main`, cycle de vie `NSApplicationDelegate`, gestion de la barre des menus.
   - `Models/` :
-    - `DockItem.swift` : Structure arborescente unifiée (`.app` et `.folder`).
-    - `DockConfig.swift` : Configuration globale et presets d'applications par défaut.
+    - `DockItem.swift` : Structure arborescente unifiée (`.app`, `.folder`, `.separator`).
+    - `DockConfig.swift` : Configuration globale, presets d'applications par défaut et options (autohide, taille, affichage de la corbeille).
   - `Services/` :
     - `AppObserverService.swift` : Surveillance des lancements et fermetures de processus.
-    - `DockPersistenceService.swift` : Sérialisation / désérialisation JSON.
-    - `IconProvider.swift` : Extraction d'icônes macOS et composition 2x2 des dossiers.
+    - `DockPersistenceService.swift` : Sérialisation / désérialisation JSON atomique et migration automatique.
+    - `IconProvider.swift` : Extraction d'icônes macOS et composition de grille pour les dossiers.
   - `ViewModels/` :
-    - `DockViewModel.swift` : Logique d'état MVVM, drag-and-drop, réorganisation, fusion et redimensionnement dynamique.
+    - `DockViewModel.swift` : Logique d'état MVVM, drag-and-drop, réorganisation, fusion, animations de rebond, gestion de la corbeille, filtrage automatique et déclenchement de la fenêtre de paramètres.
   - `Window/` :
-    - `DockPanel.swift` : `NSPanel` flottant gérant la position et l'autohide.
+    - `DockPanel.swift` : `NSPanel` flottant gérant la position, les animations et l'autohide.
     - `HotspotPanel.swift` : Déclencheur tactile au bord inférieur de l'écran.
+    - `SettingsWindowController.swift` : Contrôleur singleton de la fenêtre dédiée de paramètres native macOS.
     - `VisualEffectBackground.swift` : Wrapper AppKit pour le flou de verre liquide.
   - `Views/` :
-    - `DockContainerView.swift` : Vue racine du Dock, séparateur, popover et poignées latérales.
-    - `ResizeHandleView.swift` : Vue AppKit native de redimensionnement avec curseur horizontal et suivi d'écran sans à-coups.
-    - `DockItemView.swift` : Icône, animations au survol, drag-and-drop.
-    - `FolderIconGrid.swift` : Rendu dynamique et évolutif de la grille d'icônes miniature.
-    - `FolderPopoverView.swift` : Popover étendu d'un dossier.
-    - `MouseInteractionModifier.swift` : Gestion des clics gauche, milieu et droit.
+    - `DockContainerView.swift` : Vue racine du Dock, conteneur horizontal, séparateurs, corbeille et poignées latérales.
+    - `DockItemView.swift` : Rendu des éléments (app, dossier, séparateur), animations de survol, drag-and-drop et menus contextuels.
+    - `TrashItemView.swift` : Vue de la corbeille native macOS à droite du dock avec interactions de clic, menu contextuel et zone de dépôt (drop-to-trash).
+    - `ResizeHandleView.swift` : Poignées natives de redimensionnement gauche/droite avec curseur horizontal interactif.
+    - `FolderIconGrid.swift` : Rendu dynamique et évolutif de la grille d'icônes miniatures.
+    - `FolderPopoverView.swift` : Popover étendu d'un dossier avec grille complète d'applications et renommage direct.
+    - `FoldyDockSettingsView.swift` : Vue complète de la fenêtre de paramètres (autohide, délai, curseur et presets de taille, option corbeille, séparateurs, réinitialisation).
+    - `PinBadgeView.swift` : Badge visuel en verre liquide indiquant le statut épinglé d'un élément.
+    - `BouncingModifier.swift` : Animation fluide de rebond/saut d'icône lors du lancement d'application.
+    - `MouseInteractionModifier.swift` : Gestion unifiée des clics gauche, milieu et droit.
+- **`Tests/FoldyDockTests/`**
+  - `DockItemTests.swift` : Tests de sérialisation, détection d'apps et modèles.
+  - `DockViewModelTests.swift` : 29 tests couvrant la logique métier (création/fusion/dissolution de dossiers, redimensionnement, réorganisation, rebonds, corbeille, persistance, filtrage des anciens items de réglages).

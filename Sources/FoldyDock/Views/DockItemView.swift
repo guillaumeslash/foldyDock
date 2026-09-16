@@ -111,39 +111,7 @@ public struct DockItemView: View {
                             .frame(width: 1.5, height: iconSize * 0.65)
                             .shadow(color: Color.white.opacity(0.25), radius: 1)
                     case .settings:
-                        ZStack {
-                            RoundedRectangle(cornerRadius: iconSize * 0.22, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color(white: 0.24).opacity(0.78),
-                                            Color(white: 0.14).opacity(0.70)
-                                        ],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: iconSize * 0.22, style: .continuous)
-                                        .stroke(
-                                            LinearGradient(
-                                                colors: [Color.white.opacity(0.32), Color.white.opacity(0.14)],
-                                                startPoint: .top,
-                                                endPoint: .bottom
-                                            ),
-                                            lineWidth: 1.0
-                                        )
-                                    )
-                            Image(systemName: "gearshape.2.fill")
-                                .font(.system(size: iconSize * 0.44, weight: .semibold))
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [Color.white, Color(white: 0.85)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
-                        }
+                        EmptyView()
                         .frame(width: iconSize, height: iconSize)
                         .shadow(color: Color.black.opacity(0.2), radius: 2.5, x: 0, y: 1.5)
                     case .app:
@@ -190,9 +158,7 @@ public struct DockItemView: View {
                 }
             }
             .onTapGesture {
-                if item.type == .settings {
-                    viewModel.toggleSettings(for: item)
-                } else if item.type == .separator {
+                if item.type == .separator {
                     // Separator is non-clickable for launch
                 } else {
                     viewModel.launch(item: item)
@@ -248,20 +214,11 @@ public struct DockItemView: View {
         .popover(
             isPresented: Binding(
                 get: {
-                    if item.type == .folder {
-                        return viewModel.activeFolder?.id == item.id
-                    } else if item.type == .settings {
-                        return viewModel.activeSettingsItemId == item.id
-                    }
-                    return false
+                    item.type == .folder && viewModel.activeFolder?.id == item.id
                 },
                 set: { isPresented in
-                    if !isPresented {
-                        if item.type == .folder {
-                            viewModel.closeFolderPopover()
-                        } else if item.type == .settings {
-                            viewModel.closeSettings()
-                        }
+                    if !isPresented && item.type == .folder {
+                        viewModel.closeFolderPopover()
                     }
                 }
             ),
@@ -270,10 +227,6 @@ public struct DockItemView: View {
         ) {
             if item.type == .folder {
                 FolderPopoverView(viewModel: viewModel, folder: item)
-            } else if item.type == .settings {
-                FoldyDockSettingsPopoverView(viewModel: viewModel, onClose: {
-                    viewModel.closeSettings()
-                })
             }
         }
     }
@@ -286,13 +239,7 @@ public struct DockItemView: View {
                 viewModel.removeItem(itemId: item.id)
             }
         case .settings:
-            Button("Ouvrir les paramètres") {
-                viewModel.toggleSettings(for: item)
-            }
-            Divider()
-            Button("Supprimer du dock") {
-                viewModel.removeItem(itemId: item.id)
-            }
+            EmptyView()
         case .folder:
             Button("Ouvrir le dossier") {
                 viewModel.toggleFolderPopover(item)
@@ -399,7 +346,7 @@ private struct DockItemDropDelegate: DropDelegate {
         let x = info.location.x
 
         let placement: DropPlacement
-        if targetItem.type == .separator || targetItem.type == .settings {
+        if targetItem.type == .separator {
             placement = x < (itemWidth / 2) ? .before : .after
         } else if x < edgeThreshold {
             placement = .before
@@ -419,7 +366,7 @@ private struct DockItemDropDelegate: DropDelegate {
         let placement: DropPlacement
         if let active = viewModel.activeDropPlacement, viewModel.activeDropTargetId == targetItem.id {
             placement = active
-        } else if targetItem.type == .separator || targetItem.type == .settings {
+        } else if targetItem.type == .separator {
             placement = x < (itemWidth / 2) ? .before : .after
         } else if x < edgeThreshold {
             placement = .before

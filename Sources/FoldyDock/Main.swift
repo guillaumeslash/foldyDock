@@ -50,13 +50,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel?.reposition()
         }
 
+        vm.onOpenSettingsWindow = { [weak self] in
+            self?.openSettingsAction()
+        }
+
         setupMouseMonitors(hostingView: hostingView)
         panel.shouldPreventAutoHide = { [weak vm] in
             guard let vm = vm else { return false }
             if NSEvent.pressedMouseButtons == 0 && vm.dragSourceId != nil {
                 vm.clearDropState()
             }
-            return vm.activeFolder != nil || vm.activeSettingsItemId != nil || vm.dragSourceId != nil || vm.activeDropTargetId != nil || vm.isResizing
+            return vm.activeFolder != nil || vm.dragSourceId != nil || vm.activeDropTargetId != nil || vm.isResizing
         }
 
         self.dockPanel = panel
@@ -83,6 +87,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "FoldyDock v1.0", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
 
+        let settingsItem = NSMenuItem(title: "Paramètres FoldyDock…", action: #selector(openSettingsAction), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
         let showItem = NSMenuItem(title: "Afficher le Dock", action: #selector(showDockAction), keyEquivalent: "d")
         showItem.target = self
         menu.addItem(showItem)
@@ -105,6 +113,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quitItem)
 
         statusItem?.menu = menu
+    }
+
+    @objc private func openSettingsAction() {
+        guard let vm = viewModel else { return }
+        SettingsWindowController.shared.show(viewModel: vm)
     }
 
     @objc private func showDockAction() {

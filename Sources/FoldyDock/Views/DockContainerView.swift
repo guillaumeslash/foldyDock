@@ -59,8 +59,33 @@ public struct DockContainerView: View {
                         )
                     }
                 }
+
+                // Trash at the far right of the dock
+                if viewModel.config.showTrash {
+                    let hasPrecedingSeparator: Bool = {
+                        if !viewModel.unpinnedRunningItems.isEmpty {
+                            return viewModel.unpinnedRunningItems.last?.type == .separator
+                        } else {
+                            return viewModel.items.last?.type == .separator
+                        }
+                    }()
+
+                    if !hasPrecedingSeparator {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.25))
+                            .frame(width: 1, height: viewModel.config.iconSize * 0.65)
+                            .padding(.horizontal, 2)
+                    }
+
+                    TrashItemView(
+                        viewModel: viewModel,
+                        iconSize: viewModel.config.iconSize,
+                        dockHeight: dockHeight
+                    )
+                }
             }
             .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.items)
+            .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.config.showTrash)
             .padding(.horizontal, 6)
 
             // Right Resize Handle
@@ -133,6 +158,14 @@ public struct DockContainerView: View {
         let targetIndex = viewModel.insertionIndex(for: insertionX)
 
         Button {
+            viewModel.openSettingsWindow()
+        } label: {
+            Label("Paramètres FoldyDock…", systemImage: "gearshape")
+        }
+
+        Divider()
+
+        Button {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
                 viewModel.insertSeparator(at: targetIndex)
             }
@@ -148,39 +181,10 @@ public struct DockContainerView: View {
             Label("Créer un dossier vide", systemImage: "folder.badge.plus")
         }
 
-        Button {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                viewModel.insertSettingsItem(at: targetIndex)
-            }
-        } label: {
-            Label("Ajouter les paramètres au dock", systemImage: "gearshape.2")
-        }
-
         Divider()
 
-        Menu("Paramètres FoldyDock") {
-            Button {
-                viewModel.toggleAutohide()
-            } label: {
-                HStack {
-                    Text("Masquage automatique (Autohide)")
-                    if viewModel.config.autohideEnabled {
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-
-            Divider()
-
-            Button("Réinitialiser les applications par défaut") {
-                viewModel.resetToDefaults()
-            }
-
-            Divider()
-
-            Button("Quitter FoldyDock") {
-                NSApp.terminate(nil)
-            }
+        Button("Quitter FoldyDock") {
+            NSApp.terminate(nil)
         }
     }
 }

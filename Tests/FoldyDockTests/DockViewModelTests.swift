@@ -447,17 +447,33 @@ final class DockViewModelTests: XCTestCase {
         XCTAssertEqual(vm.items.count, 2)
     }
 
-    func testInsertSettingsItemAtIndex() {
+    func testLegacySettingsItemFilteredOut() {
         let app1 = DockItem(type: .app, title: "App 1", bundleIdentifier: "com.test.app1")
-        let config = DockConfig(items: [app1])
+        let settingsItem = DockItem(type: .settings, title: "Paramètres FoldyDock")
+        let config = DockConfig(items: [app1, settingsItem])
         persistenceService.saveConfig(config)
 
         let vm = DockViewModel(persistenceService: persistenceService)
 
-        vm.insertSettingsItem(at: 1)
-        XCTAssertEqual(vm.items.count, 2)
-        XCTAssertEqual(vm.items[1].type, .settings)
-        XCTAssertEqual(vm.items[1].title, "Paramètres FoldyDock")
+        // The settings item should be automatically filtered out from dock items
+        XCTAssertEqual(vm.items.count, 1)
+        XCTAssertEqual(vm.items.first?.bundleIdentifier, "com.test.app1")
+        XCTAssertFalse(vm.items.contains { $0.type == .settings })
+
+        vm.saveConfig()
+        let loaded = persistenceService.loadConfig()
+        XCTAssertFalse(loaded.items.contains { $0.type == .settings })
+    }
+
+    func testOpenSettingsWindowTrigger() {
+        let vm = DockViewModel(persistenceService: persistenceService)
+        var opened = false
+        vm.onOpenSettingsWindow = {
+            opened = true
+        }
+
+        vm.openSettingsWindow()
+        XCTAssertTrue(opened)
     }
 
     func testRemoveSeparator() {
@@ -504,6 +520,51 @@ final class DockViewModelTests: XCTestCase {
 
         // Click to the right of App 3 (x: 220 >= 180) -> index 3
         XCTAssertEqual(vm.insertionIndex(for: 220), 3)
+    }
+
+    func testToggleTrashUpdatesConfigAndPersists() {
+        let vm = DockViewModel(persistenceService: persistenceService)
+        XCTAssertTrue(vm.config.showTrash)
+
+        vm.toggleTrash()
+        XCTAssertFalse(vm.config.showTrash)
+
+        let reloaded = persistenceService.loadConfig()
+        XCTAssertFalse(reloaded.showTrash)
+
+        vm.toggleTrash()
+        XCTAssertTrue(vm.config.showTrash)
+    }
+
+    func testDropOnTrashRemovesPinnedItem() {
+        let app1 = DockItem(type: .app, title: "App 1", bundleIdentifier: "com.test.app1")
+        let app2 = DockItem(type: .app, title: "App 2", bundleIdentifier: "com.test.app2")
+        let config = DockConfig(items: [app1, app2])
+        persistenceService.saveConfig(config)
+
+        let vm = DockViewModel(persistenceService: persistenceService)
+        XCTAssertEqual(vm.items.count, 2)
+
+        vm.dropOnTrash(sourceId: app1.id)
+        XCTAssertEqual(vm.items.count, 1)
+        XCTAssertEqual(vm.items.first?.id, app2.id)
+
+        let reloaded = persistenceService.loadConfig()
+        XCTAssertEqual(reloaded.items.count, 1)
+        XCTAssertEqual(reloaded.items.first?.id, app2.id)
+    }
+
+    func testDropOnTrashTerminatesUnpinnedApp() {
+        let app1 = DockItem(type: .app, title: "App 1", bundleIdentifier: "com.test.app1")
+        let config = DockConfig(items: [app1])
+        persistenceService.saveConfig(config)
+
+        let vm = DockViewModel(persistenceService: persistenceService)
+        let unpinned = DockItem(type: .app, title: "Running 1", bundleIdentifier: "com.test.running1", isPinned: false)
+        vm.unpinnedRunningItems = [unpinned]
+
+        vm.dropOnTrash(sourceId: unpinned.id)
+        XCTAssertTrue(vm.unpinnedRunningItems.isEmpty)
     }
 }
 
