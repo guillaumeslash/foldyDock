@@ -27,6 +27,10 @@ public struct DockItemView: View {
         viewModel.isItemRunning(item)
     }
 
+    private var windowCount: Int {
+        viewModel.windowCount(for: item)
+    }
+
     private var itemWidth: CGFloat {
         if item.type == .separator {
             return 14.0
@@ -93,7 +97,8 @@ public struct DockItemView: View {
                             size: iconSize,
                             isHighlighted: dropPlacement == .merge,
                             bouncingSubItemIds: viewModel.bouncingItemIds,
-                            runningSubItemIds: viewModel.runningSubItemIds(for: item)
+                            runningSubItemIds: viewModel.runningSubItemIds(for: item),
+                            subItemWindowCounts: viewModel.subItemWindowCounts(for: item)
                         )
                     case .separator:
                         Rectangle()
@@ -153,6 +158,7 @@ public struct DockItemView: View {
                 isHovered = hovering
                 if hovering {
                     viewModel.hoveredItemId = item.id
+                    viewModel.refreshWindowCounts()
                 } else if viewModel.hoveredItemId == item.id {
                     viewModel.hoveredItemId = nil
                 }
@@ -168,8 +174,17 @@ public struct DockItemView: View {
                 contextMenuItems
             }
 
-            // 2. Folder title positioned above the folder in the top margin
+            // 2. Title (apps & folders) positioned above the icon in the top margin
             if item.type == .folder {
+                Text(item.title)
+                    .font(.system(size: folderFontSize, weight: .bold, design: .rounded))
+                    .foregroundColor(isHovered ? .white : Color.white.opacity(0.92))
+                    .shadow(color: Color.black.opacity(0.8), radius: 1.5, x: 0, y: 1)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: itemWidth + 8)
+                    .offset(y: -(iconSize / 2 + 10))
+            } else if item.type == .app {
                 Text(item.title)
                     .font(.system(size: folderFontSize, weight: .medium, design: .rounded))
                     .foregroundColor(isHovered ? .white : Color.white.opacity(0.92))
@@ -180,13 +195,9 @@ public struct DockItemView: View {
                     .offset(y: -(iconSize / 2 + 10))
             }
 
-            // 3. Running indicator dot positioned below the icon in the bottom margin
+            // 3. Running indicator dot(s) positioned below the icon in the bottom margin
             if isRunning {
-                Circle()
-                    .fill(Color.white.opacity(0.95))
-                    .frame(width: 4, height: 4)
-                    .shadow(color: Color.white.opacity(0.8), radius: 2)
-                    .offset(y: iconSize / 2 + 10)
+                runningIndicatorView
             }
         }
         .frame(width: itemWidth, height: dockHeight, alignment: .center)
@@ -278,6 +289,21 @@ public struct DockItemView: View {
             Button(item.isPinned ? "Supprimer du dock" : "Fermer") {
                 viewModel.removeItem(itemId: item.id)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var runningIndicatorView: some View {
+        if item.type == .folder {
+            // Sous les dossiers sur le dock, une simple pastille suffit
+            Circle()
+                .fill(Color.white.opacity(0.95))
+                .frame(width: 4, height: 4)
+                .shadow(color: Color.white.opacity(0.8), radius: 2)
+                .offset(y: iconSize / 2 + 10)
+        } else {
+            MultiWindowIndicatorView(windowCount: windowCount, dotSize: 4.0, spacing: 3.0)
+                .offset(y: iconSize / 2 + 10)
         }
     }
 

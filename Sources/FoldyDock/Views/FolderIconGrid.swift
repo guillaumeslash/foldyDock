@@ -7,19 +7,22 @@ public struct FolderIconGrid: View {
     public var isHighlighted: Bool
     public var bouncingSubItemIds: Set<UUID>
     public var runningSubItemIds: Set<UUID>
+    public var subItemWindowCounts: [UUID: Int]
 
     public init(
         item: DockItem,
         size: CGFloat = 52.0,
         isHighlighted: Bool = false,
         bouncingSubItemIds: Set<UUID> = [],
-        runningSubItemIds: Set<UUID> = []
+        runningSubItemIds: Set<UUID> = [],
+        subItemWindowCounts: [UUID: Int] = [:]
     ) {
         self.item = item
         self.size = size
         self.isHighlighted = isHighlighted
         self.bouncingSubItemIds = bouncingSubItemIds
         self.runningSubItemIds = runningSubItemIds
+        self.subItemWindowCounts = subItemWindowCounts
     }
 
     private var subItems: [DockItem] {
@@ -108,9 +111,9 @@ public struct FolderIconGrid: View {
                     )
             } else {
                 let layout = DynamicGridLayout(itemCount: subItems.count, containerSize: size)
-                VStack(spacing: layout.verticalSpacing) {
+                VStack(alignment: .leading, spacing: layout.verticalSpacing) {
                     ForEach(0..<layout.rows, id: \.self) { row in
-                        HStack(spacing: layout.horizontalSpacing) {
+                        HStack(alignment: .top, spacing: layout.horizontalSpacing) {
                             ForEach(0..<layout.cols, id: \.self) { col in
                                 let index = row * layout.cols + col
                                 miniIconView(at: index, layout: layout)
@@ -126,10 +129,13 @@ public struct FolderIconGrid: View {
 
     @ViewBuilder
     private func miniIconView(at index: Int, layout: DynamicGridLayout) -> some View {
+        let cellHeight = layout.iconSize + layout.dotSpacing + layout.dotSize
+
         if index < subItems.count {
             let sub = subItems[index]
             let isBouncing = bouncingSubItemIds.contains(sub.id)
             let isRunning = runningSubItemIds.contains(sub.id)
+            let wCount = subItemWindowCounts[sub.id] ?? (isRunning ? 1 : 0)
 
             VStack(spacing: layout.dotSpacing) {
                 Image(nsImage: IconProvider.shared.icon(for: sub, size: layout.iconSize))
@@ -139,19 +145,22 @@ public struct FolderIconGrid: View {
                     .clipShape(RoundedRectangle(cornerRadius: layout.cornerRadius, style: .continuous))
                     .dockBounce(isBouncing: isBouncing, height: layout.bounceHeight)
 
-                // Petite pastille sous l'app ouverte
-                Circle()
-                    .fill(isRunning ? Color.white.opacity(0.95) : Color.clear)
-                    .frame(width: layout.dotSize, height: layout.dotSize)
-                    .shadow(color: isRunning ? Color.white.opacity(0.85) : Color.clear, radius: max(0.5, layout.dotSize * 0.4))
-                    .shadow(color: isRunning ? Color.black.opacity(0.4) : Color.clear, radius: 0.5, y: 0.5)
+                // Multi-pastilles sous la mini app ouverte
+                ZStack(alignment: .center) {
+                    if isRunning {
+                        MultiWindowIndicatorView(
+                            windowCount: wCount,
+                            dotSize: layout.dotSize,
+                            spacing: max(0.6, layout.dotSpacing * 0.8)
+                        )
+                    }
+                }
+                .frame(width: layout.iconSize, height: layout.dotSize)
             }
+            .frame(width: layout.iconSize, height: cellHeight, alignment: .top)
         } else {
             Color.clear
-                .frame(
-                    width: layout.iconSize,
-                    height: layout.iconSize + layout.dotSpacing + layout.dotSize
-                )
+                .frame(width: layout.iconSize, height: cellHeight)
         }
     }
 }
@@ -171,32 +180,80 @@ private struct DynamicGridLayout {
     let outerPadding: CGFloat
 
     init(itemCount: Int, containerSize: CGFloat) {
-        let c = max(2, Int(ceil(sqrt(Double(itemCount)))))
-        let r = max(2, Int(ceil(Double(itemCount) / Double(c))))
+        let c: Int
+        if itemCount <= 1 {
+            c = 1
+        } else if itemCount <= 4 {
+            c = 2
+        } else if itemCount <= 9 {
+            c = 3
+        } else if itemCount <= 16 {
+            c = 4
+        } else if itemCount <= 25 {
+            c = 5
+        } else {
+            c = Int(ceil(sqrt(Double(itemCount))))
+        }
+        let r = max(1, Int(ceil(Double(itemCount) / Double(c))))
         self.cols = c
         self.rows = r
 
         let scale = containerSize / 52.0
 
         switch c {
+        case 1:
+            self.iconSize = 26.0 * scale
+            self.horizontalSpacing = 0
+            self.verticalSpacing = 0
+            self.dotSize = 3.2 * scale
+            self.dotSpacing = 1.6 * scale
+            self.bounceHeight = 4.0 * scale
+            self.cornerRadius = 26.0 * 0.22 * scale
+            self.outerPadding = 0
         case 2:
-            self.iconSize = 17.5 * scale
-            self.horizontalSpacing = 3.0 * scale
-            self.verticalSpacing = 1.5 * scale
-            self.dotSize = 2.6 * scale
-            self.dotSpacing = 1.2 * scale
-            self.bounceHeight = 3.5 * scale
-            self.cornerRadius = 17.5 * 0.22 * scale
-            self.outerPadding = 3.5 * scale
+            if r == 1 {
+                // Exactement 2 applications : 1 ligne de 2 icônes centrée verticalement et horizontalement
+                self.iconSize = 18.5 * scale
+                self.horizontalSpacing = 3.5 * scale
+                self.verticalSpacing = 0
+                self.dotSize = 2.6 * scale
+                self.dotSpacing = 1.2 * scale
+                self.bounceHeight = 3.5 * scale
+                self.cornerRadius = 18.5 * 0.22 * scale
+                self.outerPadding = 0
+            } else {
+                // 3 ou 4 applications (2 colonnes x 2 lignes)
+                self.iconSize = 17.5 * scale
+                self.horizontalSpacing = 3.0 * scale
+                self.verticalSpacing = 1.5 * scale
+                self.dotSize = 2.6 * scale
+                self.dotSpacing = 1.2 * scale
+                self.bounceHeight = 3.5 * scale
+                self.cornerRadius = 17.5 * 0.22 * scale
+                self.outerPadding = 3.5 * scale
+            }
         case 3:
-            self.iconSize = 11.5 * scale
-            self.horizontalSpacing = 2.0 * scale
-            self.verticalSpacing = 1.4 * scale
-            self.dotSize = 2.0 * scale
-            self.dotSpacing = 0.8 * scale
-            self.bounceHeight = 2.4 * scale
-            self.cornerRadius = 11.5 * 0.22 * scale
-            self.outerPadding = 3.5 * scale
+            if r == 2 {
+                // Grille à 6 applications (3 colonnes x 2 lignes) : padding réduit et applications plus grandes
+                self.iconSize = 13.5 * scale
+                self.horizontalSpacing = 2.0 * scale
+                self.verticalSpacing = 2.2 * scale
+                self.dotSize = 2.2 * scale
+                self.dotSpacing = 0.9 * scale
+                self.bounceHeight = 2.6 * scale
+                self.cornerRadius = 13.5 * 0.22 * scale
+                self.outerPadding = 2.2 * scale
+            } else {
+                // Grille à 7..9 applications (3 colonnes x 3 lignes)
+                self.iconSize = 11.2 * scale
+                self.horizontalSpacing = 2.0 * scale
+                self.verticalSpacing = 1.0 * scale
+                self.dotSize = 1.9 * scale
+                self.dotSpacing = 0.8 * scale
+                self.bounceHeight = 2.2 * scale
+                self.cornerRadius = 11.2 * 0.22 * scale
+                self.outerPadding = 2.0 * scale
+            }
         case 4:
             self.iconSize = 8.2 * scale
             self.horizontalSpacing = 1.5 * scale

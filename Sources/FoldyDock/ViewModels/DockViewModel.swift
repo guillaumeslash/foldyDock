@@ -90,6 +90,13 @@ public final class DockViewModel: ObservableObject {
                 self.objectWillChange.send()
             }
             .store(in: &cancellables)
+
+        appObserver.$windowCountsByBundleId
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - App Observer Sync
@@ -210,6 +217,33 @@ public final class DockViewModel: ObservableObject {
     public func runningSubItemIds(for folder: DockItem) -> Set<UUID> {
         guard let subs = folder.subItems else { return [] }
         return Set(subs.filter { isItemRunning($0) }.map(\.id))
+    }
+
+    public func windowCount(for item: DockItem) -> Int {
+        if item.type == .app {
+            guard let bid = item.bundleIdentifier, isItemRunning(item) else { return 0 }
+            let count = appObserver.windowCountsByBundleId[bid] ?? 0
+            return max(1, count)
+        } else if item.type == .folder {
+            // Sous les dossiers, une simple pastille suffit si une ou plusieurs apps sont ouvertes
+            return isItemRunning(item) ? 1 : 0
+        }
+        return 0
+    }
+
+    public func subItemWindowCounts(for folder: DockItem) -> [UUID: Int] {
+        guard let subs = folder.subItems else { return [:] }
+        var result: [UUID: Int] = [:]
+        for sub in subs {
+            if isItemRunning(sub) {
+                result[sub.id] = windowCount(for: sub)
+            }
+        }
+        return result
+    }
+
+    public func refreshWindowCounts() {
+        appObserver.refreshWindowCounts()
     }
 
     private var lastClosedFolderId: UUID?
@@ -416,6 +450,54 @@ public final class DockViewModel: ObservableObject {
         IconProvider.shared.invalidateCache(for: folderId)
         if activeFolder?.id == folderId {
             activeFolder = items.first(where: { $0.id == folderId })
+        }
+        saveConfig()
+    }
+
+    public func moveSubItem(folderId: UUID, sourceId: UUID, targetId: UUID, placement: DropPlacement = .before) {
+        guard sourceId != targetId else { return }
+        guard let folderIndex = items.firstIndex(where: { $0.id == folderId }),
+              var subItems = items[folderIndex].subItems else {
+            return
+        }
+
+        var sourceItem: DockItem?
+
+        if let sourceIndex = subItems.firstIndex(where: { $0.id == sourceId }) {
+            sourceItem = subItems.remove(at: sourceIndex)
+        } else if let dockIndex = items.firstIndex(where: { $0.id == sourceId }) {
+            let extracted = items.remove(at: dockIndex)
+            if extracted.type == .app {
+                sourceItem = extracted
+            } else if extracted.type == .folder, let kids = extracted.subItems {
+                subItems.append(contentsOf: kids)
+            }
+        }
+
+        guard let item = sourceItem else {
+            items[folderIndex].subItems = subItems
+            IconProvider.shared.invalidateCache(for: folderId)
+            if activeFolder?.id == folderId {
+                activeFolder = items[folderIndex]
+            }
+            saveConfig()
+            return
+        }
+
+        let targetIndex = subItems.firstIndex(where: { $0.id == targetId }) ?? subItems.count
+        let destinationIndex: Int
+        switch placement {
+        case .before, .merge:
+            destinationIndex = targetIndex
+        case .after:
+            destinationIndex = min(targetIndex + 1, subItems.count)
+        }
+
+        subItems.insert(item, at: destinationIndex)
+        items[folderIndex].subItems = subItems
+        IconProvider.shared.invalidateCache(for: folderId)
+        if activeFolder?.id == folderId {
+            activeFolder = items[folderIndex]
         }
         saveConfig()
     }

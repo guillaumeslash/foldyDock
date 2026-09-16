@@ -566,5 +566,116 @@ final class DockViewModelTests: XCTestCase {
         vm.dropOnTrash(sourceId: unpinned.id)
         XCTAssertTrue(vm.unpinnedRunningItems.isEmpty)
     }
+
+    func testWindowCountReturnsZeroWhenAppNotRunning() {
+        let app = DockItem(type: .app, title: "App 1", bundleIdentifier: "com.test.app1")
+        let vm = DockViewModel(persistenceService: persistenceService)
+        vm.items = [app]
+
+        XCTAssertEqual(vm.windowCount(for: app), 0)
+    }
+
+    func testWindowCountForRunningAppWithMultipleWindows() {
+        let app = DockItem(type: .app, title: "Firefox", bundleIdentifier: "org.mozilla.firefox")
+        let appObserver = AppObserverService.shared
+        appObserver.setRunningBundleIdsForTesting(["org.mozilla.firefox"])
+        appObserver.setWindowCountsForTesting(["org.mozilla.firefox": 2])
+
+        let vm = DockViewModel(persistenceService: persistenceService, appObserver: appObserver)
+        vm.items = [app]
+
+        XCTAssertEqual(vm.windowCount(for: app), 2)
+    }
+
+    func testWindowCountForRunningAppWithZeroWindowsReturnsOne() {
+        let app = DockItem(type: .app, title: "Finder", bundleIdentifier: "com.apple.finder")
+        let appObserver = AppObserverService.shared
+        appObserver.setRunningBundleIdsForTesting(["com.apple.finder"])
+        appObserver.setWindowCountsForTesting(["com.apple.finder": 0])
+
+        let vm = DockViewModel(persistenceService: persistenceService, appObserver: appObserver)
+        vm.items = [app]
+
+        // When running with 0 windows, displays 1 dot to indicate process is active
+        XCTAssertEqual(vm.windowCount(for: app), 1)
+    }
+
+    func testWindowCountForFolderReturnsOneWhenAnyAppIsRunning() {
+        let sub1 = DockItem(type: .app, title: "Sub 1", bundleIdentifier: "com.test.sub1")
+        let sub2 = DockItem(type: .app, title: "Sub 2", bundleIdentifier: "com.test.sub2")
+        let folder = DockItem(type: .folder, title: "My Folder", subItems: [sub1, sub2])
+
+        let appObserver = AppObserverService.shared
+        appObserver.setRunningBundleIdsForTesting(["com.test.sub1", "com.test.sub2"])
+        appObserver.setWindowCountsForTesting(["com.test.sub1": 2, "com.test.sub2": 3])
+
+        let vm = DockViewModel(persistenceService: persistenceService, appObserver: appObserver)
+        vm.items = [folder]
+
+        // Under folders, a single dot (1) is displayed if one or more sub-apps are running
+        XCTAssertEqual(vm.windowCount(for: folder), 1)
+
+        // When no sub-apps are running, returns 0
+        appObserver.setRunningBundleIdsForTesting([])
+        XCTAssertEqual(vm.windowCount(for: folder), 0)
+    }
+
+    func testSubItemWindowCountsReturnsCorrectCountsForRunningSubItems() {
+        let sub1 = DockItem(type: .app, title: "Firefox", bundleIdentifier: "org.mozilla.firefox")
+        let sub2 = DockItem(type: .app, title: "Chrome", bundleIdentifier: "com.google.Chrome")
+        let sub3 = DockItem(type: .app, title: "Safari", bundleIdentifier: "com.apple.Safari")
+        let folder = DockItem(type: .folder, title: "Browsers", subItems: [sub1, sub2, sub3])
+
+        let appObserver = AppObserverService.shared
+        appObserver.setRunningBundleIdsForTesting(["org.mozilla.firefox", "com.google.Chrome"])
+        appObserver.setWindowCountsForTesting(["org.mozilla.firefox": 2, "com.google.Chrome": 1])
+
+        let vm = DockViewModel(persistenceService: persistenceService, appObserver: appObserver)
+        vm.items = [folder]
+
+        let counts = vm.subItemWindowCounts(for: folder)
+        XCTAssertEqual(counts[sub1.id], 2)
+        XCTAssertEqual(counts[sub2.id], 1)
+        XCTAssertNil(counts[sub3.id]) // Not running
+    }
+
+    func testMoveSubItemReordersInsideFolder() {
+        let app1 = DockItem(type: .app, title: "App 1", bundleIdentifier: "com.test.app1")
+        let app2 = DockItem(type: .app, title: "App 2", bundleIdentifier: "com.test.app2")
+        let app3 = DockItem(type: .app, title: "App 3", bundleIdentifier: "com.test.app3")
+        let folder = DockItem(type: .folder, title: "Dossier", subItems: [app1, app2, app3])
+
+        let config = DockConfig(items: [folder])
+        persistenceService.saveConfig(config)
+
+        let vm = DockViewModel(persistenceService: persistenceService)
+
+        // Move app3 before app1
+        vm.moveSubItem(folderId: folder.id, sourceId: app3.id, targetId: app1.id, placement: .before)
+
+        guard let updated = vm.items.first(where: { $0.id == folder.id }),
+              let subs = updated.subItems else {
+            XCTFail("Folder or subItems missing")
+            return
+        }
+
+        XCTAssertEqual(subs.map(\.id), [app3.id, app1.id, app2.id])
+
+        // Move app1 after app2
+        vm.moveSubItem(folderId: folder.id, sourceId: app1.id, targetId: app2.id, placement: .after)
+
+        guard let updated2 = vm.items.first(where: { $0.id == folder.id }),
+              let subs2 = updated2.subItems else {
+            XCTFail("Folder or subItems missing")
+            return
+        }
+
+        XCTAssertEqual(subs2.map(\.id), [app3.id, app2.id, app1.id])
+
+        // Verify persisted
+        let loaded = persistenceService.loadConfig()
+        let loadedFolder = loaded.items.first(where: { $0.id == folder.id })
+        XCTAssertEqual(loadedFolder?.subItems?.map(\.id), [app3.id, app2.id, app1.id])
+    }
 }
 

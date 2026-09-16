@@ -75,12 +75,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupMenuBarStatusItem()
         setupScreenChangeObserver()
+        NSApp.applicationIconImage = LogoProvider.shared.logoImage(size: 512)
     }
 
     private func setupMenuBarStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "dock.rectangle", accessibilityDescription: "FoldyDock")
+            button.image = LogoProvider.shared.menuBarImage()
+            button.imagePosition = .imageOnly
+            button.toolTip = "FoldyDock"
         }
 
         let menu = NSMenu()

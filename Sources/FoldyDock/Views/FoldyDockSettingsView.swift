@@ -15,27 +15,17 @@ public struct FoldyDockSettingsView: View {
     public var body: some View {
         VStack(spacing: 0) {
             // Window Header
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.cyan, Color.blue],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 38, height: 38)
-                        .shadow(color: Color.blue.opacity(0.35), radius: 6, x: 0, y: 3)
-
-                    Image(systemName: "dock.rectangle")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
+            HStack(spacing: 14) {
+                Image(nsImage: LogoProvider.shared.logoImage(size: 48))
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: 48, height: 48)
+                    .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("FoldyDock")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(.primary)
 
                     Text("Paramètres & Personnalisation")

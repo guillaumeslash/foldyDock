@@ -44,6 +44,20 @@ mkdir -p "$RESOURCES"
 cp "$BIN_PATH" "$MACOS/FoldyDock"
 chmod +x "$MACOS/FoldyDock"
 
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+if [ -f "$PROJECT_DIR/logoFoldyDock.png" ]; then
+    cp "$PROJECT_DIR/logoFoldyDock.png" "$RESOURCES/logoFoldyDock.png"
+elif [ -f "logoFoldyDock.png" ]; then
+    cp "logoFoldyDock.png" "$RESOURCES/logoFoldyDock.png"
+fi
+
+if [ -f "$PROJECT_DIR/AppIcon.icns" ]; then
+    cp "$PROJECT_DIR/AppIcon.icns" "$RESOURCES/AppIcon.icns"
+elif [ -f "AppIcon.icns" ]; then
+    cp "AppIcon.icns" "$RESOURCES/AppIcon.icns"
+fi
+
 cat <<EOF > "$CONTENTS/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -53,6 +67,8 @@ cat <<EOF > "$CONTENTS/Info.plist"
     <string>fr</string>
     <key>CFBundleExecutable</key>
     <string>FoldyDock</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.foldydock.FoldyDock</string>
     <key>CFBundleInfoDictionaryVersion</key>

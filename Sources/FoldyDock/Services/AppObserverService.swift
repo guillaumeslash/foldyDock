@@ -7,6 +7,7 @@ public final class AppObserverService: ObservableObject {
 
     @Published public private(set) var runningBundleIds: Set<String> = []
     @Published public private(set) var activeAppBundleId: String?
+    @Published public private(set) var windowCountsByBundleId: [String: Int] = [:]
 
     /// Callbacks for ViewModel to react to unpinned apps
     public var onAppLaunched: ((NSRunningApplication) -> Void)?
@@ -25,15 +26,57 @@ public final class AppObserverService: ObservableObject {
         syncTimer?.invalidate()
     }
 
-    /// Refresh the list of currently running regular applications
+    /// Refresh the list of currently running regular applications and their window counts
     public func refreshRunningApps() {
         let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
         self.runningBundleIds = Set(apps.compactMap(\.bundleIdentifier))
         self.activeAppBundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        self.refreshWindowCounts()
+    }
+
+    /// Counts open user windows for all regular applications
+    public func refreshWindowCounts() {
+        let opts: CGWindowListOption = [.excludeDesktopElements]
+        guard let list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] else {
+            return
+        }
+
+        var pidToBundle: [pid_t: String] = [:]
+        for app in NSWorkspace.shared.runningApplications {
+            if let bid = app.bundleIdentifier, app.activationPolicy == .regular {
+                pidToBundle[app.processIdentifier] = bid
+            }
+        }
+
+        var counts: [String: Int] = [:]
+        for win in list {
+            guard let layer = win[kCGWindowLayer as String] as? Int, layer == 0,
+                  let pid = win[kCGWindowOwnerPID as String] as? pid_t,
+                  let bid = pidToBundle[pid],
+                  let bounds = win[kCGWindowBounds as String] as? [String: Any],
+                  let w = bounds["Width"] as? Double,
+                  let h = bounds["Height"] as? Double,
+                  let alpha = win[kCGWindowAlpha as String] as? Double, alpha > 0.05,
+                  w >= 150 && h >= 150 else {
+                continue
+            }
+
+            let title = (win[kCGWindowName as String] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            // Exclude macOS system 500x500 empty-titled offscreen helper windows
+            if w == 500 && h == 500 && title.isEmpty {
+                continue
+            }
+
+            counts[bid, default: 0] += 1
+        }
+
+        if self.windowCountsByBundleId != counts {
+            self.windowCountsByBundleId = counts
+        }
     }
 
     private func startPeriodicSync() {
-        syncTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: true) { [weak self] _ in
+        syncTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 let previousBids = self.runningBundleIds
@@ -56,18 +99,18 @@ public final class AppObserverService: ObservableObject {
             .sink { [weak self] app in
                 guard let self = self, let bid = app.bundleIdentifier else { return }
                 self.runningBundleIds.insert(bid)
+                self.refreshWindowCounts()
                 self.onAppLaunched?(app)
             }
             .store(in: &cancellables)
 
-        // On termination: do NOT filter by activationPolicy (.regular) because a terminating or dead
-        // process often no longer reports .regular or has transitioned to .prohibited.
         center.publisher(for: NSWorkspace.didTerminateApplicationNotification)
             .compactMap { $0.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] app in
                 guard let self = self, let bid = app.bundleIdentifier else { return }
                 self.runningBundleIds.remove(bid)
+                self.refreshWindowCounts()
                 self.onAppTerminated?(bid)
             }
             .store(in: &cancellables)
@@ -77,6 +120,28 @@ public final class AppObserverService: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] app in
                 self?.activeAppBundleId = app.bundleIdentifier
+                self?.refreshWindowCounts()
+            }
+            .store(in: &cancellables)
+
+        center.publisher(for: NSWorkspace.didDeactivateApplicationNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.refreshWindowCounts()
+            }
+            .store(in: &cancellables)
+
+        center.publisher(for: NSWorkspace.didHideApplicationNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.refreshWindowCounts()
+            }
+            .store(in: &cancellables)
+
+        center.publisher(for: NSWorkspace.didUnhideApplicationNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.refreshWindowCounts()
             }
             .store(in: &cancellables)
     }
@@ -138,4 +203,14 @@ public final class AppObserverService: ObservableObject {
         guard let bid = bundleIdentifier else { return false }
         return runningBundleIds.contains(bid)
     }
+
+    #if DEBUG
+    public func setWindowCountsForTesting(_ counts: [String: Int]) {
+        self.windowCountsByBundleId = counts
+    }
+
+    public func setRunningBundleIdsForTesting(_ bids: Set<String>) {
+        self.runningBundleIds = bids
+    }
+    #endif
 }
