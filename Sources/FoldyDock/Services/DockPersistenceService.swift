@@ -9,8 +9,20 @@ public final class DockPersistenceService: Sendable {
 
     public init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        self.directoryURL = appSupport.appendingPathComponent("FolderDock", isDirectory: true)
+        self.directoryURL = appSupport.appendingPathComponent("FoldyDock", isDirectory: true)
         self.configURL = directoryURL.appendingPathComponent("config.json")
+
+        // Migrate from legacy "FolderDock" if FoldyDock config doesn't exist yet
+        let legacyURL = appSupport.appendingPathComponent("FolderDock", isDirectory: true)
+        let legacyConfigURL = legacyURL.appendingPathComponent("config.json")
+        if !FileManager.default.fileExists(atPath: configURL.path) && FileManager.default.fileExists(atPath: legacyConfigURL.path) {
+            do {
+                try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+                try FileManager.default.copyItem(at: legacyConfigURL, to: configURL)
+            } catch {
+                print("[DockPersistenceService] Migration from FolderDock failed: \(error)")
+            }
+        }
     }
 
     /// Custom initializer for testing with a dedicated directory.

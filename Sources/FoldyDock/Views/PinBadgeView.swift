@@ -37,9 +37,9 @@ public struct PinBadgeView: View {
                 )
                 .shadow(color: Color.black.opacity(0.4), radius: 2, x: 0, y: 1)
 
-            // Pin icon
+            // Pin icon - optically centered inside the circle
             Image(systemName: "pin.fill")
-                .font(.system(size: size * 0.52, weight: .bold))
+                .font(.system(size: size * 0.48, weight: .semibold))
                 .foregroundStyle(
                     LinearGradient(
                         colors: [
@@ -50,7 +50,9 @@ public struct PinBadgeView: View {
                         endPoint: .bottom
                     )
                 )
+                .offset(y: 0.5)
         }
         .frame(width: size, height: size)
+        .opacity(0.5)
     }
 }

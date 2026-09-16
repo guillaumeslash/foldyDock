@@ -41,13 +41,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = DockPanel(contentView: hostingView, initialDockHeight: initialDockHeight)
         panel.autohideEnabled = vm.config.autohideEnabled
         panel.autohideDelay = vm.config.autohideDelay
-        setupMiddleClickMonitor(hostingView: hostingView)
+
+        vm.onAutohideToggled = { [weak panel, weak self] enabled in
+            panel?.autohideEnabled = enabled
+            self?.updateMenuBarAutohideState(enabled)
+        }
+        vm.onResetDock = { [weak panel] in
+            panel?.reposition()
+        }
+
+        setupMouseMonitors(hostingView: hostingView)
         panel.shouldPreventAutoHide = { [weak vm] in
             guard let vm = vm else { return false }
             if NSEvent.pressedMouseButtons == 0 && vm.dragSourceId != nil {
                 vm.clearDropState()
             }
-            return vm.activeFolder != nil || vm.dragSourceId != nil || vm.activeDropTargetId != nil || vm.isResizing
+            return vm.activeFolder != nil || vm.activeSettingsItemId != nil || vm.dragSourceId != nil || vm.activeDropTargetId != nil || vm.isResizing
         }
 
         self.dockPanel = panel
@@ -67,11 +76,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupMenuBarStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "dock.rectangle", accessibilityDescription: "FolderDock")
+            button.image = NSImage(systemSymbolName: "dock.rectangle", accessibilityDescription: "FoldyDock")
         }
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "FolderDock v1.0", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "FoldyDock v1.0", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
 
         let showItem = NSMenuItem(title: "Afficher le Dock", action: #selector(showDockAction), keyEquivalent: "d")
@@ -91,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let quitItem = NSMenuItem(title: "Quitter FolderDock", action: #selector(quitAction), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quitter FoldyDock", action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -122,25 +131,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
-    private func setupMiddleClickMonitor(hostingView: NSView) {
-        NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { [weak self, weak hostingView] event in
-            guard let self = self, event.buttonNumber == 2, let window = event.window else {
+    private func updateMenuBarAutohideState(_ enabled: Bool) {
+        if let menu = statusItem?.menu {
+            for item in menu.items where item.action == #selector(toggleAutohideAction) {
+                item.state = enabled ? .on : .off
+            }
+        }
+    }
+
+    private func setupMouseMonitors(hostingView: NSView) {
+        NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .rightMouseDown]) { [weak self, weak hostingView] event in
+            guard let self = self else { return event }
+
+            if event.type == .rightMouseDown {
+                if event.window == self.dockPanel, let hosting = hostingView {
+                    let pointInView = hosting.convert(event.locationInWindow, from: nil)
+                    self.viewModel?.lastRightClickLocation = pointInView
+                }
                 return event
             }
 
-            // Case 1: Middle-click on main dock panel
-            if window == self.dockPanel, let hosting = hostingView {
-                let pointInView = hosting.convert(event.locationInWindow, from: nil)
-                self.viewModel?.handleMiddleClick(at: pointInView)
-                return nil
-            }
+            if event.type == .otherMouseDown && event.buttonNumber == 2, let window = event.window {
+                // Case 1: Middle-click on main dock panel
+                if window == self.dockPanel, let hosting = hostingView {
+                    let pointInView = hosting.convert(event.locationInWindow, from: nil)
+                    self.viewModel?.handleMiddleClick(at: pointInView)
+                    return nil
+                }
 
-            // Case 2: Middle-click on a folder popover window
-            if let vm = self.viewModel, vm.activeFolder != nil, let contentView = window.contentView {
-                let hosting = self.findHostingView(in: contentView) ?? contentView
-                let pointInView = hosting.convert(event.locationInWindow, from: nil)
-                vm.handleFolderMiddleClick(at: pointInView)
-                return nil
+                // Case 2: Middle-click on a folder popover window
+                if let vm = self.viewModel, vm.activeFolder != nil, let contentView = window.contentView {
+                    let hosting = self.findHostingView(in: contentView) ?? contentView
+                    let pointInView = hosting.convert(event.locationInWindow, from: nil)
+                    vm.handleFolderMiddleClick(at: pointInView)
+                    return nil
+                }
             }
 
             return event
@@ -166,14 +191,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.dockPanel?.reposition()
+                self?.dockPanel?.updateScreens()
             }
         }
     }
 }
 
 public final class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
+    public var onRightMouseDown: ((CGPoint) -> Void)?
+
     override public func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         return true
+    }
+
+    override public func rightMouseDown(with event: NSEvent) {
+        let loc = convert(event.locationInWindow, from: nil)
+        onRightMouseDown?(loc)
+        super.rightMouseDown(with: event)
     }
 }

@@ -5,6 +5,7 @@ public struct DockItemView: View {
     @ObservedObject var viewModel: DockViewModel
     public let item: DockItem
     public let iconSize: CGFloat
+    public let dockHeight: CGFloat
 
     @State private var isHovered: Bool = false
 
@@ -15,10 +16,11 @@ public struct DockItemView: View {
         return nil
     }
 
-    public init(viewModel: DockViewModel, item: DockItem, iconSize: CGFloat = 52.0) {
+    public init(viewModel: DockViewModel, item: DockItem, iconSize: CGFloat = 52.0, dockHeight: CGFloat? = nil) {
         self.viewModel = viewModel
         self.item = item
         self.iconSize = iconSize
+        self.dockHeight = dockHeight ?? (iconSize + 40)
     }
 
     private var isRunning: Bool {
@@ -26,39 +28,24 @@ public struct DockItemView: View {
     }
 
     private var itemWidth: CGFloat {
-        iconSize + 12
+        if item.type == .separator {
+            return 14.0
+        }
+        return max(iconSize + 12, iconSize * 1.22 + 4)
     }
 
     private var folderFontSize: CGFloat {
-        max(9.0, min(12.5, iconSize * 0.19))
-    }
-
-    private var folderSize: CGFloat {
-        iconSize * 0.835
+        max(9.0, min(11.5, iconSize * 0.17))
     }
 
     public var body: some View {
-        VStack(spacing: 2) {
-            // 1. Top Slot: Folder title above the folder (for folders) or empty spacer (for apps)
-            ZStack {
-                if item.type == .folder {
-                    Text(item.title)
-                        .font(.system(size: folderFontSize, weight: .medium, design: .rounded))
-                        .foregroundColor(isHovered ? .white : Color.white.opacity(0.92))
-                        .shadow(color: Color.black.opacity(0.8), radius: 1.5, x: 0, y: 1)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: itemWidth + 6)
-                }
-            }
-            .frame(height: 14)
-
-            // 2. Middle Slot: Main Icon (App or Folder)
+        ZStack(alignment: .center) {
+            // 1. Main Icon (App or Folder) - perfectly vertically centered
             ZStack(alignment: .center) {
                 // Insertion bar indicator on the left
                 if dropPlacement == .before {
                     HStack {
-                        InsertionBar()
+                        InsertionBar(height: iconSize * 0.85)
                             .offset(x: -6)
                         Spacer()
                     }
@@ -68,14 +55,14 @@ public struct DockItemView: View {
                 if dropPlacement == .after {
                     HStack {
                         Spacer()
-                        InsertionBar()
+                        InsertionBar(height: iconSize * 0.85)
                             .offset(x: 6)
                     }
                 }
 
                 // Glowing highlight halo when targeted for folder addition or merge
                 if dropPlacement == .merge {
-                    let haloSize = (item.type == .folder ? folderSize : iconSize * 0.84) + 8
+                    let haloSize = iconSize + 8
                     RoundedRectangle(cornerRadius: haloSize * 0.25, style: .continuous)
                         .stroke(
                             LinearGradient(
@@ -97,22 +84,74 @@ public struct DockItemView: View {
                         .transition(.scale.combined(with: .opacity))
                 }
 
-                // Main Icon (App or Folder)
-                ZStack(alignment: .topTrailing) {
-                    if item.type == .folder {
+                // Main Icon (App, Folder, Separator, or Settings)
+                ZStack(alignment: .center) {
+                    switch item.type {
+                    case .folder:
                         FolderIconGrid(
                             item: item,
-                            size: folderSize,
+                            size: iconSize,
                             isHighlighted: dropPlacement == .merge,
                             bouncingSubItemIds: viewModel.bouncingItemIds,
                             runningSubItemIds: viewModel.runningSubItemIds(for: item)
                         )
-                    } else {
-                        Image(nsImage: IconProvider.shared.icon(for: item, size: iconSize))
+                    case .separator:
+                        Rectangle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.12),
+                                        Color.white.opacity(0.40),
+                                        Color.white.opacity(0.12)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .frame(width: 1.5, height: iconSize * 0.65)
+                            .shadow(color: Color.white.opacity(0.25), radius: 1)
+                    case .settings:
+                        ZStack {
+                            RoundedRectangle(cornerRadius: iconSize * 0.22, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(white: 0.24).opacity(0.78),
+                                            Color(white: 0.14).opacity(0.70)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: iconSize * 0.22, style: .continuous)
+                                        .stroke(
+                                            LinearGradient(
+                                                colors: [Color.white.opacity(0.32), Color.white.opacity(0.14)],
+                                                startPoint: .top,
+                                                endPoint: .bottom
+                                            ),
+                                            lineWidth: 1.0
+                                        )
+                                    )
+                            Image(systemName: "gearshape.2.fill")
+                                .font(.system(size: iconSize * 0.44, weight: .semibold))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [Color.white, Color(white: 0.85)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                        }
+                        .frame(width: iconSize, height: iconSize)
+                        .shadow(color: Color.black.opacity(0.2), radius: 2.5, x: 0, y: 1.5)
+                    case .app:
+                        let appIconScale: CGFloat = 1.22
+                        Image(nsImage: IconProvider.shared.icon(for: item, size: iconSize * appIconScale))
                             .resizable()
                             .scaledToFit()
-                            .frame(width: iconSize, height: iconSize)
-                            .clipShape(RoundedRectangle(cornerRadius: iconSize * 0.22, style: .continuous))
+                            .frame(width: iconSize * appIconScale, height: iconSize * appIconScale)
                             .overlay(
                                 Group {
                                     if dropPlacement == .merge {
@@ -125,50 +164,67 @@ public struct DockItemView: View {
                                     }
                                 }
                             )
-                            .shadow(color: Color.black.opacity(0.25), radius: 3, x: 0, y: 1.5)
+                            .shadow(color: Color.black.opacity(0.2), radius: 2.5, x: 0, y: 1.5)
                     }
-
-                    if item.isPinned {
+                }
+                .frame(width: item.type == .separator ? 14 : iconSize, height: iconSize)
+                .overlay(alignment: .topTrailing) {
+                    if item.isPinned && (item.type == .app || item.type == .folder) {
                         PinBadgeView(size: 13)
                             .offset(x: 3, y: -3)
                     }
                 }
                 .dockBounce(isBouncing: viewModel.isItemBouncing(item))
             }
-            .frame(width: iconSize, height: iconSize)
-            .scaleEffect(dropPlacement == .merge ? 1.15 : (isHovered ? 1.12 : 1.0))
+            .frame(width: item.type == .separator ? 14 : iconSize, height: iconSize)
+            .scaleEffect(item.type == .separator ? 1.0 : (dropPlacement == .merge ? 1.15 : (isHovered ? 1.12 : 1.0)))
             .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isHovered)
             .animation(.spring(response: 0.25, dampingFraction: 0.65), value: dropPlacement)
-
-            // 3. Bottom Slot: Running indicator dot for BOTH apps and folders
-            ZStack {
-                if isRunning {
-                    Circle()
-                        .fill(Color.white.opacity(0.95))
-                        .frame(width: 4, height: 4)
-                        .shadow(color: Color.white.opacity(0.8), radius: 2)
-                } else {
-                    Circle()
-                        .fill(Color.clear)
-                        .frame(width: 4, height: 4)
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                isHovered = hovering
+                if hovering {
+                    viewModel.hoveredItemId = item.id
+                } else if viewModel.hoveredItemId == item.id {
+                    viewModel.hoveredItemId = nil
                 }
             }
-            .frame(height: 6)
-        }
-        .frame(width: itemWidth, height: iconSize + 24, alignment: .center)
-        .contentShape(Rectangle())
-        .onHover { hovering in
-            isHovered = hovering
-            if hovering {
-                viewModel.hoveredItemId = item.id
-            } else if viewModel.hoveredItemId == item.id {
-                viewModel.hoveredItemId = nil
+            .onTapGesture {
+                if item.type == .settings {
+                    viewModel.toggleSettings(for: item)
+                } else if item.type == .separator {
+                    // Separator is non-clickable for launch
+                } else {
+                    viewModel.launch(item: item)
+                }
+            }
+            .contextMenu {
+                contextMenuItems
+            }
+
+            // 2. Folder title positioned above the folder in the top margin
+            if item.type == .folder {
+                Text(item.title)
+                    .font(.system(size: folderFontSize, weight: .medium, design: .rounded))
+                    .foregroundColor(isHovered ? .white : Color.white.opacity(0.92))
+                    .shadow(color: Color.black.opacity(0.8), radius: 1.5, x: 0, y: 1)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: itemWidth + 8)
+                    .offset(y: -(iconSize / 2 + 10))
+            }
+
+            // 3. Running indicator dot positioned below the icon in the bottom margin
+            if isRunning {
+                Circle()
+                    .fill(Color.white.opacity(0.95))
+                    .frame(width: 4, height: 4)
+                    .shadow(color: Color.white.opacity(0.8), radius: 2)
+                    .offset(y: iconSize / 2 + 10)
             }
         }
+        .frame(width: itemWidth, height: dockHeight, alignment: .center)
         .help(item.title)
-        .onTapGesture {
-            viewModel.launch(item: item)
-        }
         .background(
             GeometryReader { geo in
                 Color.clear.preference(
@@ -177,9 +233,6 @@ public struct DockItemView: View {
                 )
             }
         )
-        .contextMenu {
-            contextMenuItems
-        }
         // Drag source
         .onDrag {
             print("[DOCK_EVENT] onDrag started for: \(item.title) (id: \(item.id))")
@@ -194,21 +247,53 @@ public struct DockItemView: View {
         ))
         .popover(
             isPresented: Binding(
-                get: { viewModel.activeFolder?.id == item.id },
-                set: { if !$0 { viewModel.closeFolderPopover() } }
+                get: {
+                    if item.type == .folder {
+                        return viewModel.activeFolder?.id == item.id
+                    } else if item.type == .settings {
+                        return viewModel.activeSettingsItemId == item.id
+                    }
+                    return false
+                },
+                set: { isPresented in
+                    if !isPresented {
+                        if item.type == .folder {
+                            viewModel.closeFolderPopover()
+                        } else if item.type == .settings {
+                            viewModel.closeSettings()
+                        }
+                    }
+                }
             ),
             attachmentAnchor: .point(.top),
             arrowEdge: .bottom
         ) {
             if item.type == .folder {
                 FolderPopoverView(viewModel: viewModel, folder: item)
+            } else if item.type == .settings {
+                FoldyDockSettingsPopoverView(viewModel: viewModel, onClose: {
+                    viewModel.closeSettings()
+                })
             }
         }
     }
 
     @ViewBuilder
     private var contextMenuItems: some View {
-        if item.type == .folder {
+        switch item.type {
+        case .separator:
+            Button("Supprimer le séparateur") {
+                viewModel.removeItem(itemId: item.id)
+            }
+        case .settings:
+            Button("Ouvrir les paramètres") {
+                viewModel.toggleSettings(for: item)
+            }
+            Divider()
+            Button("Supprimer du dock") {
+                viewModel.removeItem(itemId: item.id)
+            }
+        case .folder:
             Button("Ouvrir le dossier") {
                 viewModel.toggleFolderPopover(item)
             }
@@ -226,7 +311,7 @@ public struct DockItemView: View {
             Button("Supprimer du dock") {
                 viewModel.removeItem(itemId: item.id)
             }
-        } else {
+        case .app:
             Button("Ouvrir") {
                 viewModel.launch(item: item)
             }
@@ -243,10 +328,8 @@ public struct DockItemView: View {
                 viewModel.togglePin(itemId: item.id)
             }
 
-            if item.isPinned {
-                Button("Supprimer du dock") {
-                    viewModel.removeItem(itemId: item.id)
-                }
+            Button(item.isPinned ? "Supprimer du dock" : "Fermer") {
+                viewModel.removeItem(itemId: item.id)
             }
         }
     }
@@ -269,10 +352,12 @@ public struct DockItemView: View {
 // MARK: - Insertion Bar Visual Indicator
 
 private struct InsertionBar: View {
+    var height: CGFloat = 48
+
     var body: some View {
         Capsule()
             .fill(Color.white)
-            .frame(width: 3.5, height: 48)
+            .frame(width: 3.5, height: height)
             .shadow(color: Color.blue.opacity(0.85), radius: 5)
             .shadow(color: Color.white.opacity(0.7), radius: 2)
             .transition(.scale.combined(with: .opacity))
@@ -314,7 +399,9 @@ private struct DockItemDropDelegate: DropDelegate {
         let x = info.location.x
 
         let placement: DropPlacement
-        if x < edgeThreshold {
+        if targetItem.type == .separator || targetItem.type == .settings {
+            placement = x < (itemWidth / 2) ? .before : .after
+        } else if x < edgeThreshold {
             placement = .before
         } else if x > (itemWidth - edgeThreshold) {
             placement = .after
@@ -332,6 +419,8 @@ private struct DockItemDropDelegate: DropDelegate {
         let placement: DropPlacement
         if let active = viewModel.activeDropPlacement, viewModel.activeDropTargetId == targetItem.id {
             placement = active
+        } else if targetItem.type == .separator || targetItem.type == .settings {
+            placement = x < (itemWidth / 2) ? .before : .after
         } else if x < edgeThreshold {
             placement = .before
         } else if x > (itemWidth - edgeThreshold) {

@@ -3,6 +3,8 @@ import Foundation
 public enum DockItemType: String, Codable, Sendable {
     case app
     case folder
+    case separator
+    case settings
 }
 
 public struct DockItem: Identifiable, Codable, Equatable, Sendable {

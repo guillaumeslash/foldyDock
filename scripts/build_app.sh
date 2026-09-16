@@ -24,12 +24,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "🚀 Compiling FolderDock ($CONFIGURATION)..."
+echo "🚀 Compiling FoldyDock ($CONFIGURATION)..."
 swift build -c "$CONFIGURATION"
 
-BIN_PATH=$(swift build -c "$CONFIGURATION" --show-bin-path)/FolderDock
+BIN_PATH=$(swift build -c "$CONFIGURATION" --show-bin-path)/FoldyDock
 
-APP_NAME="FolderDock.app"
+APP_NAME="FoldyDock.app"
 DIST_DIR="build"
 APP_BUNDLE="$DIST_DIR/$APP_NAME"
 CONTENTS="$APP_BUNDLE/Contents"
@@ -41,8 +41,8 @@ rm -rf "$APP_BUNDLE"
 mkdir -p "$MACOS"
 mkdir -p "$RESOURCES"
 
-cp "$BIN_PATH" "$MACOS/FolderDock"
-chmod +x "$MACOS/FolderDock"
+cp "$BIN_PATH" "$MACOS/FoldyDock"
+chmod +x "$MACOS/FoldyDock"
 
 cat <<EOF > "$CONTENTS/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -52,13 +52,13 @@ cat <<EOF > "$CONTENTS/Info.plist"
     <key>CFBundleDevelopmentRegion</key>
     <string>fr</string>
     <key>CFBundleExecutable</key>
-    <string>FolderDock</string>
+    <string>FoldyDock</string>
     <key>CFBundleIdentifier</key>
-    <string>com.folderdock.FolderDock</string>
+    <string>com.foldydock.FoldyDock</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>FolderDock</string>
+    <string>FoldyDock</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -83,7 +83,7 @@ echo "✅ $APP_NAME assembled successfully in $DIST_DIR!"
 
 if [ "$ACTION" = "run" ]; then
     echo "🌟 Launching $APP_NAME..."
-    killall FolderDock 2>/dev/null || true
+    killall FoldyDock 2>/dev/null || true
     sleep 0.2
     open "$APP_BUNDLE"
 fi

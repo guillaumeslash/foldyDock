@@ -24,6 +24,24 @@ public final class DockViewModel: ObservableObject {
     @Published public var bouncingItemIds: Set<UUID> = []
     private var bounceTimers: [UUID: DispatchWorkItem] = [:]
 
+    @Published public var lastRightClickLocation: CGPoint?
+    @Published public var activeSettingsItemId: UUID?
+    public var onAutohideToggled: ((Bool) -> Void)?
+    public var onResetDock: (() -> Void)?
+
+    public func toggleSettings(for item: DockItem) {
+        if activeSettingsItemId == item.id {
+            activeSettingsItemId = nil
+        } else {
+            closeFolderPopover()
+            activeSettingsItemId = item.id
+        }
+    }
+
+    public func closeSettings() {
+        activeSettingsItemId = nil
+    }
+
     @Published public var isResizing: Bool = false
     public static let minIconSize: Double = 32.0
     public static let maxIconSize: Double = 96.0
@@ -66,10 +84,16 @@ public final class DockViewModel: ObservableObject {
         }
 
         // Forward changes from appObserver to trigger UI re-renders for running status dots
-        appObserver.objectWillChange
+        // and keep unpinnedRunningItems strictly synchronized with runningBundleIds
+        appObserver.$runningBundleIds
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] in
-                self?.objectWillChange.send()
+            .sink { [weak self] runningBids in
+                guard let self = self else { return }
+                self.unpinnedRunningItems.removeAll { item in
+                    guard let bid = item.bundleIdentifier else { return false }
+                    return !runningBids.contains(bid)
+                }
+                self.objectWillChange.send()
             }
             .store(in: &cancellables)
     }
@@ -180,6 +204,9 @@ public final class DockViewModel: ObservableObject {
         for bid in item.allBundleIdentifiers {
             appObserver.terminateApp(bundleIdentifier: bid)
         }
+        if !item.isPinned {
+            unpinnedRunningItems.removeAll { $0.id == item.id }
+        }
     }
 
     public func isItemRunning(_ item: DockItem) -> Bool {
@@ -213,6 +240,7 @@ public final class DockViewModel: ObservableObject {
         if activeFolder?.id == item.id {
             closeFolderPopover()
         } else {
+            activeSettingsItemId = nil
             activeFolder = item
         }
     }
@@ -254,6 +282,9 @@ public final class DockViewModel: ObservableObject {
                 unpinnedRunningItems.append(unpinned)
             }
             saveConfig()
+        } else if let index = unpinnedRunningItems.firstIndex(where: { $0.id == itemId }) {
+            let item = unpinnedRunningItems.remove(at: index)
+            terminate(item: item)
         }
     }
 
@@ -325,9 +356,6 @@ public final class DockViewModel: ObservableObject {
                     let folderId = items[folderIndex].id
                     sourceItem = children.remove(at: childIndex)
                     items[folderIndex].subItems = children
-                    if children.isEmpty {
-                        items.remove(at: folderIndex)
-                    }
                     IconProvider.shared.invalidateCache(for: folderId)
                     break
                 }
@@ -392,12 +420,6 @@ public final class DockViewModel: ObservableObject {
 
         // Insert extracted item right next to the folder
         items.insert(extractedItem, at: folderIndex + 1)
-
-        // If folder has only 1 item left or 0, we can either keep it or unpack it
-        if subItems.isEmpty {
-            items.remove(at: folderIndex)
-        }
-
         IconProvider.shared.invalidateCache(for: folderId)
         if activeFolder?.id == folderId {
             activeFolder = items.first(where: { $0.id == folderId })
@@ -540,7 +562,88 @@ public final class DockViewModel: ObservableObject {
         saveConfig()
     }
 
-    private func saveConfig() {
+    // MARK: - Context Menu Insertions & Settings
+
+    public func insertionIndex(for xPosition: CGFloat) -> Int {
+        guard !items.isEmpty else { return 0 }
+
+        var itemsWithFrames: [(index: Int, frame: CGRect)] = []
+        for (i, item) in items.enumerated() {
+            if let frame = itemFrames[item.id] {
+                itemsWithFrames.append((index: i, frame: frame))
+            }
+        }
+
+        guard !itemsWithFrames.isEmpty else {
+            return items.count
+        }
+
+        itemsWithFrames.sort { $0.frame.minX < $1.frame.minX }
+
+        if xPosition < itemsWithFrames[0].frame.midX {
+            return itemsWithFrames[0].index
+        }
+
+        for i in 0..<(itemsWithFrames.count - 1) {
+            let currentMid = itemsWithFrames[i].frame.midX
+            let nextMid = itemsWithFrames[i + 1].frame.midX
+            if xPosition >= currentMid && xPosition < nextMid {
+                return itemsWithFrames[i].index + 1
+            }
+        }
+
+        let last = itemsWithFrames[itemsWithFrames.count - 1]
+        return last.index + 1
+    }
+
+    public func insertSeparator(at index: Int) {
+        let safeIndex = max(0, min(index, items.count))
+        let separator = DockItem(
+            type: .separator,
+            title: "Séparateur",
+            isPinned: true
+        )
+        items.insert(separator, at: safeIndex)
+        saveConfig()
+    }
+
+    public func createEmptyFolder(at index: Int, title: String = "Nouveau dossier") {
+        let safeIndex = max(0, min(index, items.count))
+        let folder = DockItem(
+            type: .folder,
+            title: title,
+            isPinned: true,
+            subItems: []
+        )
+        items.insert(folder, at: safeIndex)
+        saveConfig()
+    }
+
+    public func insertSettingsItem(at index: Int) {
+        let safeIndex = max(0, min(index, items.count))
+        let settings = DockItem(
+            type: .settings,
+            title: "Paramètres FoldyDock",
+            isPinned: true
+        )
+        items.insert(settings, at: safeIndex)
+        saveConfig()
+    }
+
+    public func toggleAutohide() {
+        config.autohideEnabled.toggle()
+        onAutohideToggled?(config.autohideEnabled)
+        saveConfig()
+    }
+
+    public func resetToDefaults() {
+        config = DockConfig.defaultConfig
+        items = config.items
+        saveConfig()
+        onResetDock?()
+    }
+
+    public func saveConfig() {
         config.items = items
         persistenceService.saveConfig(config)
     }

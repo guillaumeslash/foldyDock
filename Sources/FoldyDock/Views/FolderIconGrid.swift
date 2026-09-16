@@ -97,11 +97,15 @@ public struct FolderIconGrid: View {
 
             // Content: dynamic scalable mini icons
             if subItems.isEmpty {
-                Image(systemName: "folder.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: size * 0.45, height: size * 0.45)
-                    .foregroundStyle(.white.opacity(0.8))
+                Image(systemName: "folder.badge.plus")
+                    .font(.system(size: size * 0.42))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.65), Color.white.opacity(0.35)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
             } else {
                 let layout = DynamicGridLayout(itemCount: subItems.count, containerSize: size)
                 VStack(spacing: layout.verticalSpacing) {

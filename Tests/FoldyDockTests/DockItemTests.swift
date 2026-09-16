@@ -1,5 +1,5 @@
 import XCTest
-@testable import FolderDock
+@testable import FoldyDock
 
 final class DockItemTests: XCTestCase {
     func testSerializationAndDeserialization() throws {

@@ -1,6 +1,6 @@
-# 📂 FolderDock
+# 📂 FoldyDock
 
-**FolderDock** est une application macOS native offrant un dock flottant alternatif élégant doté d'un système de dossiers d'applications inspiré d'iOS, d'interactions avancées à la souris et d'un masquage automatique fluide.
+**FoldyDock** est une application macOS native offrant un dock flottant alternatif élégant doté d'un système de dossiers d'applications inspiré d'iOS, d'interactions avancées à la souris et d'un masquage automatique fluide.
 
 ---
 
@@ -42,7 +42,7 @@
    - Indicateur d'activité (pastille lumineuse) sous l'icône de chaque application ou dossier contenant une application active.
 
 7. **Persistance JSON & Menu Bar**
-   - Configuration sauvegardée de manière atomique dans `~/Library/Application Support/FolderDock/config.json`.
+   - Configuration sauvegardée de manière atomique dans `~/Library/Application Support/FoldyDock/config.json`.
    - Icône discrète dans la barre des menus macOS permettant d'afficher le dock, d'activer/désactiver l'autohide, de réinitialiser la disposition d'origine ou de quitter l'application.
 
 ---
@@ -58,7 +58,7 @@
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ```
 
-### Compiler et empaqueter le bundle `FolderDock.app`
+### Compiler et empaqueter le bundle `FoldyDock.app`
 ```bash
 ./scripts/build_app.sh
 ```
@@ -72,7 +72,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 
 ## 📁 Architecture du Code
 
-- **`Sources/FolderDock/`**
+- **`Sources/FoldyDock/`**
   - `Main.swift` : Point d'entrée `@main`, cycle de vie `NSApplicationDelegate`, barre des menus.
   - `Models/` :
     - `DockItem.swift` : Structure arborescente unifiée (`.app` et `.folder`).

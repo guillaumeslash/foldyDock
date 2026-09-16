@@ -13,10 +13,16 @@ public final class AppObserverService: ObservableObject {
     public var onAppTerminated: ((String) -> Void)?
 
     private var cancellables = Set<AnyCancellable>()
+    private var syncTimer: Timer?
 
     public init() {
         refreshRunningApps()
         setupNotificationObservers()
+        startPeriodicSync()
+    }
+
+    deinit {
+        syncTimer?.invalidate()
     }
 
     /// Refresh the list of currently running regular applications
@@ -24,6 +30,20 @@ public final class AppObserverService: ObservableObject {
         let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
         self.runningBundleIds = Set(apps.compactMap(\.bundleIdentifier))
         self.activeAppBundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    }
+
+    private func startPeriodicSync() {
+        syncTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let previousBids = self.runningBundleIds
+                self.refreshRunningApps()
+                let removedBids = previousBids.subtracting(self.runningBundleIds)
+                for bid in removedBids {
+                    self.onAppTerminated?(bid)
+                }
+            }
+        }
     }
 
     private func setupNotificationObservers() {
@@ -40,9 +60,10 @@ public final class AppObserverService: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // On termination: do NOT filter by activationPolicy (.regular) because a terminating or dead
+        // process often no longer reports .regular or has transitioned to .prohibited.
         center.publisher(for: NSWorkspace.didTerminateApplicationNotification)
             .compactMap { $0.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication }
-            .filter { $0.activationPolicy == .regular }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] app in
                 guard let self = self, let bid = app.bundleIdentifier else { return }
@@ -88,9 +109,28 @@ public final class AppObserverService: ObservableObject {
     /// Terminates an application by bundle identifier (used on middle-click or context menu)
     public func terminateApp(bundleIdentifier: String) {
         let matchingApps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
-        for app in matchingApps {
-            app.terminate()
+        if matchingApps.isEmpty {
+            // Already dead: immediately clean up tracking
+            self.runningBundleIds.remove(bundleIdentifier)
+            self.onAppTerminated?(bundleIdentifier)
+            return
         }
+
+        for app in matchingApps {
+            let initiated = app.terminate()
+            // If graceful terminate failed or app is stubborn (e.g. background continuity app), force terminate
+            if !initiated || !app.isTerminated {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    if !app.isTerminated {
+                        app.forceTerminate()
+                    }
+                }
+            }
+        }
+
+        // Clean up from tracking set immediately so UI reflects termination
+        self.runningBundleIds.remove(bundleIdentifier)
+        self.onAppTerminated?(bundleIdentifier)
     }
 
     /// Checks if a given bundle ID is running

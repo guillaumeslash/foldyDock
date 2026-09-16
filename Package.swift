@@ -2,27 +2,27 @@
 import PackageDescription
 
 let package = Package(
-    name: "FolderDock",
+    name: "FoldyDock",
     platforms: [
         .macOS(.v14)
     ],
     products: [
         .executable(
-            name: "FolderDock",
-            targets: ["FolderDock"]
+            name: "FoldyDock",
+            targets: ["FoldyDock"]
         )
     ],
     dependencies: [],
     targets: [
         .executableTarget(
-            name: "FolderDock",
+            name: "FoldyDock",
             dependencies: [],
-            path: "Sources/FolderDock"
+            path: "Sources/FoldyDock"
         ),
         .testTarget(
-            name: "FolderDockTests",
-            dependencies: ["FolderDock"],
-            path: "Tests/FolderDockTests"
+            name: "FoldyDockTests",
+            dependencies: ["FoldyDock"],
+            path: "Tests/FoldyDockTests"
         )
     ]
 )

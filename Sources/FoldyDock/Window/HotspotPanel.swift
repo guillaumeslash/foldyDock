@@ -2,9 +2,8 @@ import AppKit
 
 public final class HotspotPanel: NSPanel {
     public var onCursorHitEdge: (() -> Void)?
-    private var trackingArea: NSTrackingArea?
 
-    public init() {
+    public init(screen: NSScreen) {
         super.init(
             contentRect: .zero,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -24,6 +23,7 @@ public final class HotspotPanel: NSPanel {
             self?.onCursorHitEdge?()
         }
         self.contentView = view
+        updatePosition(screen: screen)
     }
 
     public func updatePosition(screen: NSScreen) {
@@ -36,6 +36,36 @@ public final class HotspotPanel: NSPanel {
             height: height
         )
         self.setFrame(frame, display: true)
+    }
+}
+
+public final class HotspotManager {
+    private var panels: [HotspotPanel] = []
+    public var onCursorHitEdge: ((NSScreen) -> Void)?
+
+    public init() {
+        updateScreens()
+    }
+
+    public func updateScreens() {
+        panels.forEach { $0.orderOut(nil) }
+        panels.removeAll()
+
+        for screen in NSScreen.screens {
+            let panel = HotspotPanel(screen: screen)
+            panel.onCursorHitEdge = { [weak self] in
+                self?.onCursorHitEdge?(screen)
+            }
+            panels.append(panel)
+        }
+    }
+
+    public func orderFrontAll() {
+        panels.forEach { $0.orderFront(nil) }
+    }
+
+    public func orderOutAll() {
+        panels.forEach { $0.orderOut(nil) }
     }
 }
 
@@ -68,4 +98,3 @@ private final class HotspotView: NSView {
         onMouseEnter?()
     }
 }
-

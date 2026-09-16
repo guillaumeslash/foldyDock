@@ -24,7 +24,8 @@ public struct DockContainerView: View {
                     DockItemView(
                         viewModel: viewModel,
                         item: item,
-                        iconSize: viewModel.config.iconSize
+                        iconSize: viewModel.config.iconSize,
+                        dockHeight: dockHeight
                     )
                 }
 
@@ -53,7 +54,8 @@ public struct DockContainerView: View {
                         DockItemView(
                             viewModel: viewModel,
                             item: item,
-                            iconSize: viewModel.config.iconSize
+                            iconSize: viewModel.config.iconSize,
+                            dockHeight: dockHeight
                         )
                     }
                 }
@@ -64,7 +66,6 @@ public struct DockContainerView: View {
             // Right Resize Handle
             ResizeHandleView(viewModel: viewModel, isRightEdge: true)
         }
-        .padding(.vertical, 8)
         .background(
             ZStack {
                 VisualEffectBackground(
@@ -114,11 +115,72 @@ public struct DockContainerView: View {
             }
             return false
         }
+        .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .contextMenu {
+            dockEmptyAreaContextMenu
+        }
         .onPreferenceChange(ItemFramesPreferenceKey.self) { frames in
             viewModel.itemFrames = frames
         }
         .onPreferenceChange(DockSizePreferenceKey.self) { newSize in
             onSizeChange?(newSize)
+        }
+    }
+
+    @ViewBuilder
+    private var dockEmptyAreaContextMenu: some View {
+        let insertionX = viewModel.lastRightClickLocation?.x ?? 0
+        let targetIndex = viewModel.insertionIndex(for: insertionX)
+
+        Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                viewModel.insertSeparator(at: targetIndex)
+            }
+        } label: {
+            Label("Ajouter un séparateur vertical", systemImage: "line.diagonal")
+        }
+
+        Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                viewModel.createEmptyFolder(at: targetIndex)
+            }
+        } label: {
+            Label("Créer un dossier vide", systemImage: "folder.badge.plus")
+        }
+
+        Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                viewModel.insertSettingsItem(at: targetIndex)
+            }
+        } label: {
+            Label("Ajouter les paramètres au dock", systemImage: "gearshape.2")
+        }
+
+        Divider()
+
+        Menu("Paramètres FoldyDock") {
+            Button {
+                viewModel.toggleAutohide()
+            } label: {
+                HStack {
+                    Text("Masquage automatique (Autohide)")
+                    if viewModel.config.autohideEnabled {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+
+            Divider()
+
+            Button("Réinitialiser les applications par défaut") {
+                viewModel.resetToDefaults()
+            }
+
+            Divider()
+
+            Button("Quitter FoldyDock") {
+                NSApp.terminate(nil)
+            }
         }
     }
 }

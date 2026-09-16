@@ -10,19 +10,24 @@ public final class DockPanel: NSPanel {
 
     private(set) public var isHiddenState: Bool = false
     private var shownY: CGFloat = 18
-    public let hotspotPanel: HotspotPanel
+    public let hotspotManager: HotspotManager
     public var onMiddleClickEvent: ((NSEvent) -> Void)?
     private var globalMouseMonitor: Any?
 
-    public var targetScreen: NSScreen? {
-        NSScreen.screens.first ?? NSScreen.main
+    public var currentScreen: NSScreen {
+        didSet {
+            // Keep shownY updated for current screen
+            self.shownY = currentScreen.frame.origin.y + 18
+        }
     }
 
     public var dockHeight: CGFloat = 92.0
 
     public init(contentView: NSView, initialDockHeight: CGFloat = 92.0) {
         self.dockHeight = initialDockHeight
-        self.hotspotPanel = HotspotPanel()
+        let initialScreen = NSScreen.screens.first ?? NSScreen.main ?? NSScreen()
+        self.currentScreen = initialScreen
+        self.hotspotManager = HotspotManager()
 
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: initialDockHeight),
@@ -49,12 +54,13 @@ public final class DockPanel: NSPanel {
 
         self.contentView = trackingContainer
 
-        hotspotPanel.onCursorHitEdge = { [weak self] in
-            guard let self = self, self.isHiddenState else { return }
-            self.showDock(animated: true)
+        hotspotManager.onCursorHitEdge = { [weak self] screen in
+            guard let self = self else { return }
+            self.showDock(on: screen, animated: true)
         }
 
         reposition()
+        startEdgeMonitoring()
     }
 
     deinit {
@@ -69,29 +75,36 @@ public final class DockPanel: NSPanel {
         return false
     }
 
+    public func updateScreens() {
+        hotspotManager.updateScreens()
+        // If currentScreen is no longer valid, fallback to first available screen
+        if !NSScreen.screens.contains(where: { $0.frame == currentScreen.frame }) {
+            if let first = NSScreen.screens.first {
+                self.currentScreen = first
+            }
+        }
+        reposition()
+    }
+
     public func reposition() {
-        guard let screen = targetScreen else { return }
+        let screen = currentScreen
         let screenFrame = screen.frame
 
         let width = self.frame.width > 0 ? self.frame.width : 500
         let x = screenFrame.origin.x + (screenFrame.width - width) / 2
         self.shownY = screenFrame.origin.y + 18
 
-        hotspotPanel.updatePosition(screen: screen)
-
         if isHiddenState {
             let hideTargetY = screenFrame.origin.y
             self.setFrame(NSRect(x: x, y: hideTargetY, width: width, height: dockHeight), display: true)
             self.alphaValue = 0.0
             self.orderOut(nil)
-            hotspotPanel.orderFront(nil)
-            startEdgeMonitoring()
+            hotspotManager.orderFrontAll()
         } else {
             self.setFrame(NSRect(x: x, y: shownY, width: width, height: dockHeight), display: true)
             self.alphaValue = 1.0
             self.orderFrontRegardless()
-            hotspotPanel.orderOut(nil)
-            stopEdgeMonitoring()
+            hotspotManager.orderOutAll()
             if autohideEnabled {
                 scheduleInactivityTimer()
             }
@@ -103,7 +116,7 @@ public final class DockPanel: NSPanel {
     }
 
     public func updateDockSize(width: CGFloat, height: CGFloat) {
-        guard let screen = targetScreen else { return }
+        let screen = currentScreen
         let screenFrame = screen.frame
         if height > 0 {
             self.dockHeight = height
@@ -128,7 +141,7 @@ public final class DockPanel: NSPanel {
         inactivityTimer = nil
 
         if isHiddenState {
-            showDock(animated: true)
+            showDock(on: currentScreen, animated: true)
         }
     }
 
@@ -163,17 +176,19 @@ public final class DockPanel: NSPanel {
         }
     }
 
-    public func showDock(animated: Bool = true) {
+    public func showDock(on screen: NSScreen? = nil, animated: Bool = true) {
         hideTimer?.invalidate()
         hideTimer = nil
         inactivityTimer?.invalidate()
         inactivityTimer = nil
-        isHiddenState = false
-        stopEdgeMonitoring()
-        hotspotPanel.orderOut(nil)
 
-        guard let screen = targetScreen else { return }
-        let screenFrame = screen.frame
+        let targetScreen = screen ?? self.currentScreen
+        let isSwitchingScreen = (targetScreen != self.currentScreen)
+        self.currentScreen = targetScreen
+        self.isHiddenState = false
+        hotspotManager.orderOutAll()
+
+        let screenFrame = targetScreen.frame
         self.shownY = screenFrame.origin.y + 18
 
         let width = self.frame.width > 0 ? self.frame.width : 500
@@ -188,8 +203,8 @@ public final class DockPanel: NSPanel {
         scheduleInactivityTimer()
 
         if animated {
-            // Position at bottom edge with opacity 0 before gliding up
-            if self.alphaValue < 0.05 || !self.isVisible {
+            // Position at bottom edge with opacity 0 before gliding up if hidden or switching screens
+            if isSwitchingScreen || self.alphaValue < 0.05 || !self.isVisible {
                 let startFrame = NSRect(
                     x: x,
                     y: screenFrame.origin.y,
@@ -221,12 +236,12 @@ public final class DockPanel: NSPanel {
         inactivityTimer = nil
         isHiddenState = true
 
-        guard let screen = targetScreen else { return }
+        let screen = currentScreen
         let screenFrame = screen.frame
         let width = self.frame.width > 0 ? self.frame.width : 500
         let x = screenFrame.origin.x + (screenFrame.width - width) / 2
 
-        // Slide towards the bottom edge of the top screen (never crossing into a screen below)
+        // Slide towards the bottom edge of the current screen (never crossing into a screen below)
         let hideTargetY = screenFrame.origin.y
         let targetFrame = NSRect(
             x: x,
@@ -235,9 +250,7 @@ public final class DockPanel: NSPanel {
             height: dockHeight
         )
 
-        startEdgeMonitoring()
-        hotspotPanel.updatePosition(screen: screen)
-        hotspotPanel.orderFront(nil)
+        hotspotManager.orderFrontAll()
 
         if animated {
             NSAnimationContext.runAnimationGroup({ context in
@@ -257,15 +270,32 @@ public final class DockPanel: NSPanel {
         }
     }
 
-    // MARK: - Edge Detection for Dual-Monitor Setup
+    // MARK: - Multi-Monitor Bottom-Edge Detection
+
+    public func screenForBottomEdge(at loc: NSPoint) -> NSScreen? {
+        for screen in NSScreen.screens {
+            let f = screen.frame
+            // Check if cursor is within 8pt of the bottom edge of this screen
+            let isAtBottom = loc.y >= f.origin.y && loc.y <= (f.origin.y + 8.0)
+                && loc.x >= f.origin.x && loc.x <= (f.origin.x + f.width)
+            if isAtBottom {
+                return screen
+            }
+        }
+        return nil
+    }
 
     public func startEdgeMonitoring() {
         guard globalMouseMonitor == nil else { return }
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self = self, self.isHiddenState else { return }
+                guard let self = self else { return }
                 let loc = NSEvent.mouseLocation
-                self.checkEdgeHit(at: loc)
+                if let targetScreen = self.screenForBottomEdge(at: loc) {
+                    if self.isHiddenState || targetScreen != self.currentScreen {
+                        self.showDock(on: targetScreen, animated: true)
+                    }
+                }
             }
         }
     }
@@ -274,21 +304,6 @@ public final class DockPanel: NSPanel {
         if let monitor = globalMouseMonitor {
             NSEvent.removeMonitor(monitor)
             globalMouseMonitor = nil
-        }
-    }
-
-    private func checkEdgeHit(at loc: NSPoint) {
-        guard isHiddenState else { return }
-        guard let screen = targetScreen else { return }
-        let screenFrame = screen.frame
-
-        let bottomEdge = screenFrame.origin.y
-        // Hit if cursor is within 8pt above the bottom edge of the top screen, within its horizontal width
-        let isAtBottomEdge = loc.y >= bottomEdge && loc.y <= (bottomEdge + 8.0)
-            && loc.x >= screenFrame.origin.x && loc.x <= (screenFrame.origin.x + screenFrame.width)
-
-        if isAtBottomEdge {
-            showDock(animated: true)
         }
     }
 }

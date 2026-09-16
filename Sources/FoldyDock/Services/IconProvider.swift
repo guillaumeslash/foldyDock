@@ -23,6 +23,10 @@ public final class IconProvider {
             generatedImage = appIcon(for: item, size: size)
         case .folder:
             generatedImage = folderIcon(for: item, size: size)
+        case .separator:
+            generatedImage = NSImage(size: NSSize(width: size, height: size))
+        case .settings:
+            generatedImage = NSImage(systemSymbolName: "gearshape.2.fill", accessibilityDescription: "Paramètres") ?? NSImage()
         }
 
         cache.setObject(generatedImage, forKey: cacheKey)

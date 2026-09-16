@@ -49,7 +49,7 @@ public struct ResizeHandleView: View {
                 .animation(.easeInOut(duration: 0.18), value: isHovered)
                 .animation(.easeInOut(duration: 0.18), value: viewModel.isResizing)
         }
-        .frame(width: 16)
+        .frame(width: 16, height: viewModel.config.iconSize + 40)
     }
 }
 

@@ -1,5 +1,5 @@
 import XCTest
-@testable import FolderDock
+@testable import FoldyDock
 
 @MainActor
 final class DockViewModelTests: XCTestCase {
@@ -372,6 +372,138 @@ final class DockViewModelTests: XCTestCase {
         // Verify loaded config from disk has the new iconSize
         let loaded = persistenceService.loadConfig()
         XCTAssertEqual(loaded.iconSize, newSize)
+    }
+
+    func testRemoveUnpinnedItem() {
+        let app1 = DockItem(type: .app, title: "App 1", bundleIdentifier: "com.test.app1")
+        let config = DockConfig(items: [app1])
+        persistenceService.saveConfig(config)
+
+        let vm = DockViewModel(persistenceService: persistenceService)
+        let unpinnedApp = DockItem(type: .app, title: "Phone", bundleIdentifier: "com.apple.mobilephone", isPinned: false)
+        vm.unpinnedRunningItems = [unpinnedApp]
+
+        XCTAssertEqual(vm.unpinnedRunningItems.count, 1)
+
+        // Remove the unpinned item
+        vm.removeItem(itemId: unpinnedApp.id)
+
+        XCTAssertTrue(vm.unpinnedRunningItems.isEmpty)
+    }
+
+    func testTerminateUnpinnedItemRemovesFromUnpinnedList() {
+        let app1 = DockItem(type: .app, title: "App 1", bundleIdentifier: "com.test.app1")
+        let config = DockConfig(items: [app1])
+        persistenceService.saveConfig(config)
+
+        let vm = DockViewModel(persistenceService: persistenceService)
+        let unpinnedApp = DockItem(type: .app, title: "Phone", bundleIdentifier: "com.apple.mobilephone", isPinned: false)
+        vm.unpinnedRunningItems = [unpinnedApp]
+
+        XCTAssertEqual(vm.unpinnedRunningItems.count, 1)
+
+        // Terminate unpinned item
+        vm.terminate(item: unpinnedApp)
+
+        XCTAssertTrue(vm.unpinnedRunningItems.isEmpty)
+    }
+
+    func testInsertSeparatorAtIndex() {
+        let app1 = DockItem(type: .app, title: "App 1", bundleIdentifier: "com.test.app1")
+        let app2 = DockItem(type: .app, title: "App 2", bundleIdentifier: "com.test.app2")
+        let config = DockConfig(items: [app1, app2])
+        persistenceService.saveConfig(config)
+
+        let vm = DockViewModel(persistenceService: persistenceService)
+        XCTAssertEqual(vm.items.count, 2)
+
+        // Insert separator between App 1 and App 2
+        vm.insertSeparator(at: 1)
+        XCTAssertEqual(vm.items.count, 3)
+        XCTAssertEqual(vm.items[1].type, .separator)
+        XCTAssertEqual(vm.items[1].title, "Séparateur")
+
+        // Persisted to disk
+        let loaded = persistenceService.loadConfig()
+        XCTAssertEqual(loaded.items.count, 3)
+        XCTAssertEqual(loaded.items[1].type, .separator)
+    }
+
+    func testCreateEmptyFolderAtIndex() {
+        let app1 = DockItem(type: .app, title: "App 1", bundleIdentifier: "com.test.app1")
+        let config = DockConfig(items: [app1])
+        persistenceService.saveConfig(config)
+
+        let vm = DockViewModel(persistenceService: persistenceService)
+
+        // Create empty folder
+        vm.createEmptyFolder(at: 0, title: "Mon Dossier")
+        XCTAssertEqual(vm.items.count, 2)
+        XCTAssertEqual(vm.items[0].type, .folder)
+        XCTAssertEqual(vm.items[0].title, "Mon Dossier")
+        XCTAssertEqual(vm.items[0].subItems?.count, 0)
+
+        // Empty folder should not auto-dissolve
+        XCTAssertEqual(vm.items.count, 2)
+    }
+
+    func testInsertSettingsItemAtIndex() {
+        let app1 = DockItem(type: .app, title: "App 1", bundleIdentifier: "com.test.app1")
+        let config = DockConfig(items: [app1])
+        persistenceService.saveConfig(config)
+
+        let vm = DockViewModel(persistenceService: persistenceService)
+
+        vm.insertSettingsItem(at: 1)
+        XCTAssertEqual(vm.items.count, 2)
+        XCTAssertEqual(vm.items[1].type, .settings)
+        XCTAssertEqual(vm.items[1].title, "Paramètres FoldyDock")
+    }
+
+    func testRemoveSeparator() {
+        let app1 = DockItem(type: .app, title: "App 1", bundleIdentifier: "com.test.app1")
+        let sep = DockItem(type: .separator, title: "Séparateur")
+        let config = DockConfig(items: [app1, sep])
+        persistenceService.saveConfig(config)
+
+        let vm = DockViewModel(persistenceService: persistenceService)
+        XCTAssertEqual(vm.items.count, 2)
+
+        vm.removeItem(itemId: sep.id)
+        XCTAssertEqual(vm.items.count, 1)
+        XCTAssertEqual(vm.items[0].id, app1.id)
+    }
+
+    func testInsertionIndexCalculation() {
+        let app1 = DockItem(type: .app, title: "App 1", bundleIdentifier: "com.test.app1")
+        let app2 = DockItem(type: .app, title: "App 2", bundleIdentifier: "com.test.app2")
+        let app3 = DockItem(type: .app, title: "App 3", bundleIdentifier: "com.test.app3")
+        let config = DockConfig(items: [app1, app2, app3])
+        persistenceService.saveConfig(config)
+
+        let vm = DockViewModel(persistenceService: persistenceService)
+
+        // Simulate itemFrames:
+        // App 1: x: 10..70 (mid: 40)
+        // App 2: x: 80..140 (mid: 110)
+        // App 3: x: 150..210 (mid: 180)
+        vm.itemFrames = [
+            app1.id: CGRect(x: 10, y: 10, width: 60, height: 60),
+            app2.id: CGRect(x: 80, y: 10, width: 60, height: 60),
+            app3.id: CGRect(x: 150, y: 10, width: 60, height: 60)
+        ]
+
+        // Click to the left of App 1 (x: 20 < 40) -> index 0
+        XCTAssertEqual(vm.insertionIndex(for: 20), 0)
+
+        // Click between App 1 and App 2 (x: 75 -> between 40 and 110) -> index 1
+        XCTAssertEqual(vm.insertionIndex(for: 75), 1)
+
+        // Click between App 2 and App 3 (x: 145 -> between 110 and 180) -> index 2
+        XCTAssertEqual(vm.insertionIndex(for: 145), 2)
+
+        // Click to the right of App 3 (x: 220 >= 180) -> index 3
+        XCTAssertEqual(vm.insertionIndex(for: 220), 3)
     }
 }
 
