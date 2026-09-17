@@ -8,6 +8,7 @@ public final class AppObserverService: ObservableObject {
     @Published public private(set) var runningBundleIds: Set<String> = []
     @Published public private(set) var activeAppBundleId: String?
     @Published public private(set) var windowCountsByBundleId: [String: Int] = [:]
+    @Published public private(set) var hiddenAppBundleIds: Set<String> = []
 
     /// Callbacks for ViewModel to react to unpinned apps
     public var onAppLaunched: ((NSRunningApplication) -> Void)?
@@ -32,6 +33,7 @@ public final class AppObserverService: ObservableObject {
         self.runningBundleIds = Set(apps.compactMap(\.bundleIdentifier))
         self.activeAppBundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         self.refreshWindowCounts()
+        self.refreshHiddenApps()
     }
 
     /// Counts open user windows for all regular applications
@@ -75,6 +77,40 @@ public final class AppObserverService: ObservableObject {
         }
     }
 
+    /// Refreshes the set of applications that are hidden (via ⌘H/Masquer or with all windows minimized via yellow button)
+    public func refreshHiddenApps() {
+        var hiddenBids: Set<String> = []
+        for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
+            guard let bid = app.bundleIdentifier else { continue }
+            if app.isHidden {
+                hiddenBids.insert(bid)
+                continue
+            }
+
+            // Check if all windows are minimized (yellow traffic light button)
+            let appElem = AXUIElementCreateApplication(app.processIdentifier)
+            var winListRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(appElem, kAXWindowsAttribute as CFString, &winListRef) == .success,
+               let wins = winListRef as? [AXUIElement], !wins.isEmpty {
+                var minCount = 0
+                for w in wins {
+                    var val: CFTypeRef?
+                    if AXUIElementCopyAttributeValue(w, kAXMinimizedAttribute as CFString, &val) == .success,
+                       let b = val as? Bool, b {
+                        minCount += 1
+                    }
+                }
+                if minCount > 0 && minCount == wins.count {
+                    hiddenBids.insert(bid)
+                }
+            }
+        }
+
+        if self.hiddenAppBundleIds != hiddenBids {
+            self.hiddenAppBundleIds = hiddenBids
+        }
+    }
+
     private func startPeriodicSync() {
         syncTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -100,6 +136,7 @@ public final class AppObserverService: ObservableObject {
                 guard let self = self, let bid = app.bundleIdentifier else { return }
                 self.runningBundleIds.insert(bid)
                 self.refreshWindowCounts()
+                self.refreshHiddenApps()
                 self.onAppLaunched?(app)
             }
             .store(in: &cancellables)
@@ -111,6 +148,7 @@ public final class AppObserverService: ObservableObject {
                 guard let self = self, let bid = app.bundleIdentifier else { return }
                 self.runningBundleIds.remove(bid)
                 self.refreshWindowCounts()
+                self.refreshHiddenApps()
                 self.onAppTerminated?(bid)
             }
             .store(in: &cancellables)
@@ -121,6 +159,7 @@ public final class AppObserverService: ObservableObject {
             .sink { [weak self] app in
                 self?.activeAppBundleId = app.bundleIdentifier
                 self?.refreshWindowCounts()
+                self?.refreshHiddenApps()
             }
             .store(in: &cancellables)
 
@@ -128,6 +167,7 @@ public final class AppObserverService: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.refreshWindowCounts()
+                self?.refreshHiddenApps()
             }
             .store(in: &cancellables)
 
@@ -135,6 +175,7 @@ public final class AppObserverService: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.refreshWindowCounts()
+                self?.refreshHiddenApps()
             }
             .store(in: &cancellables)
 
@@ -142,6 +183,7 @@ public final class AppObserverService: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.refreshWindowCounts()
+                self?.refreshHiddenApps()
             }
             .store(in: &cancellables)
     }
@@ -211,6 +253,10 @@ public final class AppObserverService: ObservableObject {
 
     public func setRunningBundleIdsForTesting(_ bids: Set<String>) {
         self.runningBundleIds = bids
+    }
+
+    public func setHiddenAppBundleIdsForTesting(_ bids: Set<String>) {
+        self.hiddenAppBundleIds = bids
     }
     #endif
 }

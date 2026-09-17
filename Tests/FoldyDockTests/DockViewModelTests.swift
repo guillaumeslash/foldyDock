@@ -14,6 +14,7 @@ final class DockViewModelTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        AppObserverService.shared.refreshRunningApps()
         try? FileManager.default.removeItem(at: tempDirectory)
         try await super.tearDown()
     }
@@ -38,7 +39,7 @@ final class DockViewModelTests: XCTestCase {
             return
         }
 
-        XCTAssertEqual(folder.title, "Dossier Test")
+        XCTAssertEqual(folder.title, "DOSSIER TEST")
         XCTAssertEqual(folder.subItems?.count, 2)
         XCTAssertEqual(folder.subItems?[0].id, app2.id)
         XCTAssertEqual(folder.subItems?[1].id, app1.id)
@@ -55,7 +56,7 @@ final class DockViewModelTests: XCTestCase {
         let vm = DockViewModel(persistenceService: persistenceService)
         vm.renameFolder(folderId: folder.id, newTitle: "Nouveau Nom")
 
-        XCTAssertEqual(vm.items[0].title, "Nouveau Nom")
+        XCTAssertEqual(vm.items[0].title, "NOUVEAU NOM")
     }
 
     func testReorderItems() {
@@ -440,7 +441,7 @@ final class DockViewModelTests: XCTestCase {
         vm.createEmptyFolder(at: 0, title: "Mon Dossier")
         XCTAssertEqual(vm.items.count, 2)
         XCTAssertEqual(vm.items[0].type, .folder)
-        XCTAssertEqual(vm.items[0].title, "Mon Dossier")
+        XCTAssertEqual(vm.items[0].title, "MON DOSSIER")
         XCTAssertEqual(vm.items[0].subItems?.count, 0)
 
         // Empty folder should not auto-dissolve
@@ -676,6 +677,208 @@ final class DockViewModelTests: XCTestCase {
         let loaded = persistenceService.loadConfig()
         let loadedFolder = loaded.items.first(where: { $0.id == folder.id })
         XCTAssertEqual(loadedFolder?.subItems?.map(\.id), [app3.id, app2.id, app1.id])
+    }
+
+    func testNewConfigOptionsDefaultValuesAndDockHeight() {
+        let config = DockConfig.defaultConfig
+        XCTAssertEqual(config.horizontalPadding, 12.0)
+        XCTAssertEqual(config.verticalPadding, 12.0)
+        XCTAssertEqual(config.labelDistance, 10.0)
+        XCTAssertTrue(config.showAppTitles)
+        XCTAssertTrue(config.showFolderTitles)
+        XCTAssertTrue(config.showPinBadges)
+        XCTAssertEqual(config.dockHeight, 52.0 + 12.0 * 2)
+
+        let vm = DockViewModel(persistenceService: persistenceService)
+        XCTAssertEqual(vm.dockHeight, CGFloat(52.0 + 12.0 * 2))
+    }
+
+    func testNewConfigOptionsSerializationAndDeserialization() throws {
+        var config = DockConfig(
+            autohideEnabled: false,
+            autohideDelay: 0.5,
+            iconSize: 64.0,
+            items: [],
+            showTrash: false,
+            horizontalPadding: 18.0,
+            verticalPadding: 8.0,
+            showAppTitles: false,
+            showFolderTitles: false,
+            showPinBadges: false,
+            labelDistance: 14.0
+        )
+
+        let encoded = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(DockConfig.self, from: encoded)
+
+        XCTAssertEqual(decoded.horizontalPadding, 18.0)
+        XCTAssertEqual(decoded.verticalPadding, 8.0)
+        XCTAssertEqual(decoded.labelDistance, 14.0)
+        XCTAssertFalse(decoded.showAppTitles)
+        XCTAssertFalse(decoded.showFolderTitles)
+        XCTAssertFalse(decoded.showPinBadges)
+        XCTAssertEqual(decoded.dockHeight, 64.0 + 8.0 * 2)
+    }
+
+    func testUpdatingPaddingAndVisibilityPersistsConfig() {
+        let vm = DockViewModel(persistenceService: persistenceService)
+        vm.config.horizontalPadding = 20.0
+        vm.config.verticalPadding = 16.0
+        vm.config.showAppTitles = false
+        vm.config.showFolderTitles = false
+        vm.config.showPinBadges = false
+        vm.saveConfig()
+
+        let reloaded = persistenceService.loadConfig()
+        XCTAssertEqual(reloaded.horizontalPadding, 20.0)
+        XCTAssertEqual(reloaded.verticalPadding, 16.0)
+        XCTAssertFalse(reloaded.showAppTitles)
+        XCTAssertFalse(reloaded.showFolderTitles)
+        XCTAssertFalse(reloaded.showPinBadges)
+    }
+
+    func testShowDelayAndHideDelayConfigAndPersistence() throws {
+        let config = DockConfig.defaultConfig
+        XCTAssertEqual(config.showDelay, 0.0)
+        XCTAssertEqual(config.hideDelay, 0.3)
+        XCTAssertEqual(config.autohideDelay, 0.3)
+
+        let vm = DockViewModel(persistenceService: persistenceService)
+        var receivedConfig: DockConfig?
+        vm.onConfigUpdated = { updated in
+            receivedConfig = updated
+        }
+
+        vm.config.showDelay = 0.4
+        vm.config.hideDelay = 0.8
+        vm.saveConfig()
+
+        XCTAssertNotNil(receivedConfig)
+        XCTAssertEqual(receivedConfig?.showDelay, 0.4)
+        XCTAssertEqual(receivedConfig?.hideDelay, 0.8)
+        XCTAssertEqual(receivedConfig?.autohideDelay, 0.8)
+
+        let reloaded = persistenceService.loadConfig()
+        XCTAssertEqual(reloaded.showDelay, 0.4)
+        XCTAssertEqual(reloaded.hideDelay, 0.8)
+        XCTAssertEqual(reloaded.autohideDelay, 0.8)
+    }
+
+    func testVerticalPaddingUpTo48() {
+        let vm = DockViewModel(persistenceService: persistenceService)
+        vm.config.verticalPadding = 48.0
+        XCTAssertEqual(vm.dockHeight, CGFloat(52.0 + 48.0 * 2))
+
+        vm.saveConfig()
+        let reloaded = persistenceService.loadConfig()
+        XCTAssertEqual(reloaded.verticalPadding, 48.0)
+        XCTAssertEqual(reloaded.dockHeight, 52.0 + 48.0 * 2)
+    }
+
+    func testLabelDistanceConfigAndPersistence() {
+        let vm = DockViewModel(persistenceService: persistenceService)
+        XCTAssertEqual(vm.config.labelDistance, 10.0)
+
+        vm.config.labelDistance = 15.0
+        vm.saveConfig()
+
+        let reloaded = persistenceService.loadConfig()
+        XCTAssertEqual(reloaded.labelDistance, 15.0)
+    }
+
+    func testAppLauncherConfigAndToggle() {
+        let vm = DockViewModel(persistenceService: persistenceService)
+        XCTAssertTrue(vm.config.showAppLauncher)
+
+        vm.toggleAppLauncher()
+        XCTAssertFalse(vm.config.showAppLauncher)
+
+        let reloaded = persistenceService.loadConfig()
+        XCTAssertFalse(reloaded.showAppLauncher)
+
+        vm.toggleAppLauncher()
+        XCTAssertTrue(vm.config.showAppLauncher)
+    }
+
+    func testApplicationsLauncherOpenAndClose() {
+        let vm = DockViewModel(persistenceService: persistenceService)
+        XCTAssertFalse(vm.isApplicationsLauncherOpen)
+
+        vm.toggleApplicationsLauncher()
+        XCTAssertTrue(vm.isApplicationsLauncherOpen)
+
+        // Opening a folder should close the applications launcher
+        let dummyFolder = DockItem(type: .folder, title: "Tools", subItems: [])
+        vm.toggleFolderPopover(dummyFolder)
+        XCTAssertFalse(vm.isApplicationsLauncherOpen)
+        XCTAssertEqual(vm.activeFolder?.id, dummyFolder.id)
+
+        // Opening applications launcher should close active folder
+        vm.toggleApplicationsLauncher()
+        XCTAssertTrue(vm.isApplicationsLauncherOpen)
+        XCTAssertNil(vm.activeFolder)
+
+        vm.closeApplicationsLauncher()
+        XCTAssertFalse(vm.isApplicationsLauncherOpen)
+    }
+
+    func testAppDiscoveryScanInstalledApps() {
+        let apps = AppDiscoveryService.scanInstalledApps()
+        XCTAssertFalse(apps.isEmpty, "Scan should discover installed macOS applications")
+        XCTAssertTrue(apps.contains(where: { $0.url.path.hasSuffix(".app") }))
+    }
+
+    func testPinInstalledApp() {
+        let vm = DockViewModel(persistenceService: persistenceService)
+        let initialCount = vm.items.count
+
+        let testApp = InstalledApp(
+            name: "Test App",
+            bundleIdentifier: "com.test.uniqueApp",
+            url: URL(fileURLWithPath: "/Applications/Test.app")
+        )
+
+        vm.pinInstalledApp(testApp)
+        XCTAssertEqual(vm.items.count, initialCount + 1)
+        let pinned = vm.items.last
+        XCTAssertEqual(pinned?.title, "Test App")
+        XCTAssertEqual(pinned?.bundleIdentifier, "com.test.uniqueApp")
+        XCTAssertEqual(pinned?.appPath, "/Applications/Test.app")
+        XCTAssertTrue(pinned?.isPinned ?? false)
+    }
+
+    func testHiddenAppOpacityConfigAndPersistence() {
+        let vm = DockViewModel(persistenceService: persistenceService)
+        XCTAssertEqual(vm.config.hiddenAppOpacity, 0.5)
+
+        vm.config.hiddenAppOpacity = 0.35
+        vm.saveConfig()
+
+        let reloaded = persistenceService.loadConfig()
+        XCTAssertEqual(reloaded.hiddenAppOpacity, 0.35)
+    }
+
+    func testIsItemHiddenForAppAndFolder() {
+        let appObserver = AppObserverService()
+        let vm = DockViewModel(persistenceService: persistenceService, appObserver: appObserver)
+
+        let testApp = DockItem(type: .app, title: "Hidden App", bundleIdentifier: "com.test.hiddenApp", isPinned: true)
+        let visibleApp = DockItem(type: .app, title: "Visible App", bundleIdentifier: "com.test.visibleApp", isPinned: true)
+
+        appObserver.setRunningBundleIdsForTesting(["com.test.hiddenApp", "com.test.visibleApp"])
+        appObserver.setHiddenAppBundleIdsForTesting(["com.test.hiddenApp"])
+
+        XCTAssertTrue(vm.isItemHidden(testApp))
+        XCTAssertFalse(vm.isItemHidden(visibleApp))
+
+        // Folder where all running apps are hidden
+        let folderAllHidden = DockItem(type: .folder, title: "All Hidden", isPinned: true, subItems: [testApp])
+        XCTAssertTrue(vm.isItemHidden(folderAllHidden))
+
+        // Folder with mixed apps
+        let folderMixed = DockItem(type: .folder, title: "Mixed", isPinned: true, subItems: [testApp, visibleApp])
+        XCTAssertFalse(vm.isItemHidden(folderMixed))
+        XCTAssertEqual(vm.hiddenSubItemIds(for: folderMixed), [testApp.id])
     }
 }
 

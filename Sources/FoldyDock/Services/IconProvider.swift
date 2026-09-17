@@ -39,6 +39,24 @@ public final class IconProvider {
         cache.removeAllObjects()
     }
 
+    /// Retrieves or generates an icon for an arbitrary file or application path
+    public func icon(forPath path: String, size: CGFloat = 64) -> NSImage {
+        let cacheKey = "path-\(path)-\(Int(size))" as NSString
+        if let cached = cache.object(forKey: cacheKey) {
+            return cached
+        }
+
+        let img: NSImage
+        if FileManager.default.fileExists(atPath: path) {
+            img = NSWorkspace.shared.icon(forFile: path)
+        } else {
+            img = NSWorkspace.shared.icon(for: .applicationBundle)
+        }
+        img.size = NSSize(width: size, height: size)
+        cache.setObject(img, forKey: cacheKey)
+        return img
+    }
+
     private func appIcon(for item: DockItem, size: CGFloat) -> NSImage {
         var image: NSImage?
 

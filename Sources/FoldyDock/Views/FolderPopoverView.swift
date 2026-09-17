@@ -13,6 +13,12 @@ public struct FolderPopoverView: View {
         GridItem(.adaptive(minimum: 88, maximum: 104), spacing: 16)
     ]
 
+    private let itemWidth: CGFloat = 88.0
+
+    private var cellHeight: CGFloat {
+        appIconSize + max(24.0, (viewModel.config.labelDistance + 8.0) * 2)
+    }
+
     public init(viewModel: DockViewModel, folder: DockItem) {
         self.viewModel = viewModel
         self.folder = folder
@@ -37,15 +43,15 @@ public struct FolderPopoverView: View {
                         viewModel.renameFolder(folderId: folder.id, newTitle: folderTitle)
                     })
                     .textFieldStyle(.plain)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(Color.white.opacity(0.12))
                     .cornerRadius(6)
                 } else {
-                    Text(folder.title)
-                        .font(.system(size: 16, weight: .bold))
+                    Text(currentFolder.title.uppercased())
+                        .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(.white)
                         .onTapGesture(count: 2) {
                             isEditingTitle = true
@@ -94,12 +100,20 @@ public struct FolderPopoverView: View {
                 }
                 .frame(minWidth: 240, minHeight: 110)
             } else {
-                LazyVGrid(columns: columns, spacing: 18) {
+                LazyVGrid(columns: columns, spacing: 14) {
                     ForEach(subItems) { subItem in
-                        folderAppItemView(subItem)
+                        FolderSubItemView(
+                            viewModel: viewModel,
+                            item: subItem,
+                            currentFolderId: currentFolder.id,
+                            appIconSize: appIconSize,
+                            itemWidth: itemWidth,
+                            cellHeight: cellHeight
+                        )
                     }
                 }
                 .padding(.top, 4)
+                .padding(.bottom, 2)
                 .animation(.spring(response: 0.32, dampingFraction: 0.78), value: subItems.map(\.id))
             }
         }
@@ -117,71 +131,101 @@ public struct FolderPopoverView: View {
             viewModel.folderItemFrames = [:]
         }
     }
+}
 
-    @ViewBuilder
-    private func folderAppItemView(_ item: DockItem) -> some View {
+// MARK: - Sub-Item View with Identical Dock Label & Indicator Distance
+
+private struct FolderSubItemView: View {
+    @ObservedObject var viewModel: DockViewModel
+    let item: DockItem
+    let currentFolderId: UUID
+    let appIconSize: CGFloat
+    let itemWidth: CGFloat
+    let cellHeight: CGFloat
+
+    @State private var isHovered: Bool = false
+
+    var body: some View {
         let isRunning = viewModel.isItemRunning(item)
         let windowCount = viewModel.windowCount(for: item)
         let isTargeted = viewModel.activeDropTargetId == item.id
         let placement = viewModel.activeDropPlacement
+        let labelDistance = viewModel.config.labelDistance
+        let isAppHidden = isRunning && viewModel.isItemHidden(item)
+        let effectiveOpacity = isAppHidden ? (isHovered ? min(1.0, viewModel.config.hiddenAppOpacity + 0.25) : viewModel.config.hiddenAppOpacity) : 1.0
 
-        VStack(spacing: 2) {
-            Text(item.title)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundColor(Color.white.opacity(0.92))
-                .shadow(color: Color.black.opacity(0.8), radius: 1.5, x: 0, y: 1)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: 88)
-
-            ZStack(alignment: .top) {
-                // Drop insertion indicator on the left
-                if isTargeted && placement == .before {
-                    HStack {
-                        Capsule()
-                            .fill(Color.white)
-                            .frame(width: 3.5, height: appIconSize * 0.85)
-                            .shadow(color: Color.blue.opacity(0.9), radius: 5)
-                            .shadow(color: Color.white.opacity(0.7), radius: 2)
-                            .offset(x: -5)
-                        Spacer()
-                    }
+        ZStack(alignment: .center) {
+            // Drop insertion indicator on the left
+            if isTargeted && placement == .before {
+                HStack {
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(width: 3.5, height: appIconSize * 0.85)
+                        .shadow(color: Color.blue.opacity(0.9), radius: 5)
+                        .shadow(color: Color.white.opacity(0.7), radius: 2)
+                        .offset(x: -4)
+                    Spacer()
                 }
-
-                // Drop insertion indicator on the right
-                if isTargeted && placement == .after {
-                    HStack {
-                        Spacer()
-                        Capsule()
-                            .fill(Color.white)
-                            .frame(width: 3.5, height: appIconSize * 0.85)
-                            .shadow(color: Color.blue.opacity(0.9), radius: 5)
-                            .shadow(color: Color.white.opacity(0.7), radius: 2)
-                            .offset(x: 5)
-                    }
-                }
-
-                // App icon
-                Image(nsImage: IconProvider.shared.icon(for: item, size: appIconSize))
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: appIconSize, height: appIconSize)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .shadow(color: Color.black.opacity(0.25), radius: 4, x: 0, y: 2.5)
-                    .dockBounce(isBouncing: viewModel.isItemBouncing(item))
-
-                // Active multi-window indicator
-                if isRunning {
-                    MultiWindowIndicatorView(windowCount: windowCount, dotSize: 4.5, spacing: 3.5)
-                        .offset(y: appIconSize + 4)
-                }
+                .frame(width: itemWidth)
             }
-            .frame(width: 88, height: appIconSize + 14)
+
+            // Drop insertion indicator on the right
+            if isTargeted && placement == .after {
+                HStack {
+                    Spacer()
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(width: 3.5, height: appIconSize * 0.85)
+                        .shadow(color: Color.blue.opacity(0.9), radius: 5)
+                        .shadow(color: Color.white.opacity(0.7), radius: 2)
+                        .offset(x: 4)
+                }
+                .frame(width: itemWidth)
+            }
+
+            // App icon
+            Image(nsImage: IconProvider.shared.icon(for: item, size: appIconSize))
+                .resizable()
+                .scaledToFit()
+                .frame(width: appIconSize, height: appIconSize)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .opacity(effectiveOpacity)
+                .animation(.easeInOut(duration: 0.25), value: isAppHidden)
+                .shadow(
+                    color: Color.black.opacity(isHovered ? 0.35 : (isAppHidden ? 0.12 : 0.25)),
+                    radius: isHovered ? 6 : 4,
+                    x: 0,
+                    y: isHovered ? 3.5 : 2.5
+                )
+                .scaleEffect(isTargeted ? 1.08 : (isHovered ? 1.08 : 1.0))
+                .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isHovered)
+                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isTargeted)
+                .dockBounce(isBouncing: viewModel.isItemBouncing(item))
+
+            // Title positioned above the icon at fixed distance (identical to Dock)
+            if viewModel.config.showAppTitles {
+                Text(item.title)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(isHovered ? .white : Color.white.opacity(0.92))
+                    .shadow(color: Color.black.opacity(0.8), radius: 1.5, x: 0, y: 1)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: itemWidth)
+                    .offset(y: -(appIconSize / 2 + labelDistance))
+            }
+
+            // Active multi-window indicator positioned below the icon at fixed distance (identical to Dock)
+            if isRunning {
+                MultiWindowIndicatorView(windowCount: windowCount, dotSize: 4.5, spacing: 3.5)
+                    .offset(y: appIconSize / 2 + labelDistance)
+            }
         }
-        .frame(width: 88)
+        .frame(width: itemWidth, height: cellHeight, alignment: .center)
         .contentShape(Rectangle())
-        .scaleEffect(isTargeted ? 1.05 : 1.0)
-        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isTargeted)
+        .help(item.title)
+        .onHover { hovering in
+            isHovered = hovering
+        }
         .background(
             GeometryReader { geo in
                 Color.clear.preference(
@@ -202,9 +246,9 @@ public struct FolderPopoverView: View {
         }
         .onDrop(of: [.plainText, .utf8PlainText, .text], delegate: FolderItemDropDelegate(
             targetItem: item,
-            folderId: currentFolder.id,
+            folderId: currentFolderId,
             viewModel: viewModel,
-            itemWidth: 88
+            itemWidth: itemWidth
         ))
         .contextMenu {
             Button("Ouvrir") {
@@ -223,7 +267,7 @@ public struct FolderPopoverView: View {
             Divider()
 
             Button("Sortir du dossier") {
-                viewModel.removeFromFolder(subItemId: item.id, folderId: currentFolder.id)
+                viewModel.removeFromFolder(subItemId: item.id, folderId: currentFolderId)
             }
         }
     }

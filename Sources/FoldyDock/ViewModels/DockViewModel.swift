@@ -15,6 +15,7 @@ public final class DockViewModel: ObservableObject {
     @Published public var unpinnedRunningItems: [DockItem] = []
 
     @Published public var activeFolder: DockItem?
+    @Published public var isApplicationsLauncherOpen: Bool = false
     @Published public var hoveredItemId: UUID?
     @Published public var dragSourceId: UUID?
     @Published public var activeDropTargetId: UUID?
@@ -28,9 +29,14 @@ public final class DockViewModel: ObservableObject {
     public var onAutohideToggled: ((Bool) -> Void)?
     public var onResetDock: (() -> Void)?
     public var onOpenSettingsWindow: (() -> Void)?
+    public var onConfigUpdated: ((DockConfig) -> Void)?
 
     public func openSettingsWindow() {
         onOpenSettingsWindow?()
+    }
+
+    public var dockHeight: CGFloat {
+        CGFloat(config.dockHeight)
     }
 
     @Published public var isResizing: Bool = false
@@ -92,6 +98,13 @@ public final class DockViewModel: ObservableObject {
             .store(in: &cancellables)
 
         appObserver.$windowCountsByBundleId
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
+        appObserver.$hiddenAppBundleIds
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
@@ -214,6 +227,11 @@ public final class DockViewModel: ObservableObject {
         item.isRunning(in: appObserver.runningBundleIds)
     }
 
+    public func isAppRunning(bundleIdentifier: String?) -> Bool {
+        guard let bid = bundleIdentifier else { return false }
+        return appObserver.runningBundleIds.contains(bid)
+    }
+
     public func runningSubItemIds(for folder: DockItem) -> Set<UUID> {
         guard let subs = folder.subItems else { return [] }
         return Set(subs.filter { isItemRunning($0) }.map(\.id))
@@ -242,14 +260,45 @@ public final class DockViewModel: ObservableObject {
         return result
     }
 
+    public func isItemHidden(_ item: DockItem) -> Bool {
+        if item.type == .app {
+            return item.allBundleIdentifiers.contains { appObserver.hiddenAppBundleIds.contains($0) }
+        } else if item.type == .folder {
+            let runningSubs = item.subItems?.filter { isItemRunning($0) } ?? []
+            guard !runningSubs.isEmpty else { return false }
+            return runningSubs.allSatisfy { isItemHidden($0) }
+        }
+        return false
+    }
+
+    public func isAppHidden(bundleIdentifier: String?) -> Bool {
+        guard let bid = bundleIdentifier else { return false }
+        return appObserver.hiddenAppBundleIds.contains(bid)
+    }
+
+    public func hiddenSubItemIds(for folder: DockItem) -> Set<UUID> {
+        guard let subs = folder.subItems else { return [] }
+        return Set(subs.filter { isItemRunning($0) && isItemHidden($0) }.map(\.id))
+    }
+
+    public func refreshHiddenApps() {
+        appObserver.refreshHiddenApps()
+    }
+
     public func refreshWindowCounts() {
         appObserver.refreshWindowCounts()
+        appObserver.refreshHiddenApps()
     }
 
     private var lastClosedFolderId: UUID?
     private var lastClosedFolderTime: Date?
+    private var lastClosedLauncherTime: Date?
 
     public func toggleFolderPopover(_ item: DockItem) {
+        if isApplicationsLauncherOpen {
+            closeApplicationsLauncher()
+        }
+
         // If this exact folder was closed just now (e.g. by the popover outside-click dismiss),
         // the click was intended to close it, so do not immediately re-open it.
         if let lastId = lastClosedFolderId,
@@ -278,6 +327,58 @@ public final class DockViewModel: ObservableObject {
             lastClosedFolderTime = Date()
         }
         activeFolder = nil
+    }
+
+    public func toggleApplicationsLauncher() {
+        if let lastTime = lastClosedLauncherTime,
+           Date().timeIntervalSince(lastTime) < 0.4 {
+            lastClosedLauncherTime = nil
+            isApplicationsLauncherOpen = false
+            return
+        }
+
+        lastClosedLauncherTime = nil
+
+        if isApplicationsLauncherOpen {
+            closeApplicationsLauncher()
+        } else {
+            closeFolderPopover()
+            isApplicationsLauncherOpen = true
+            AppDiscoveryService.shared.refreshApps(force: false)
+        }
+    }
+
+    public func closeApplicationsLauncher(recordDismissal: Bool = false) {
+        if recordDismissal && isApplicationsLauncherOpen {
+            lastClosedLauncherTime = Date()
+        }
+        isApplicationsLauncherOpen = false
+    }
+
+    public func launchInstalledApp(_ app: InstalledApp) {
+        closeApplicationsLauncher()
+        if let matchingItem = items.first(where: { $0.matches(bundleIdentifier: app.bundleIdentifier ?? "") || $0.appPath == app.path }) {
+            triggerBounce(for: matchingItem)
+        }
+        NSWorkspace.shared.open(app.url)
+    }
+
+    public func pinInstalledApp(_ app: InstalledApp) {
+        let newItem = DockItem(
+            id: UUID(),
+            type: .app,
+            title: app.name,
+            bundleIdentifier: app.bundleIdentifier,
+            appPath: app.path,
+            isPinned: true
+        )
+        items.append(newItem)
+        saveConfig()
+    }
+
+    public func toggleAppLauncher() {
+        config.showAppLauncher.toggle()
+        saveConfig()
     }
 
     public func togglePin(itemId: UUID) {
@@ -319,7 +420,9 @@ public final class DockViewModel: ObservableObject {
 
     public func renameFolder(folderId: UUID, newTitle: String) {
         guard let index = items.firstIndex(where: { $0.id == folderId }) else { return }
-        items[index].title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Dossier" : newTitle
+        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalTitle = (trimmed.isEmpty ? "DOSSIER" : trimmed).uppercased()
+        items[index].title = finalTitle
         if activeFolder?.id == folderId {
             activeFolder = items[index]
         }
@@ -424,7 +527,7 @@ public final class DockViewModel: ObservableObject {
             let newFolder = DockItem(
                 id: UUID(),
                 type: .folder,
-                title: folderName,
+                title: folderName.uppercased(),
                 isPinned: true,
                 subItems: folderChildren
             )
@@ -682,11 +785,11 @@ public final class DockViewModel: ObservableObject {
         saveConfig()
     }
 
-    public func createEmptyFolder(at index: Int, title: String = "Nouveau dossier") {
+    public func createEmptyFolder(at index: Int, title: String = "NOUVEAU DOSSIER") {
         let safeIndex = max(0, min(index, items.count))
         let folder = DockItem(
             type: .folder,
-            title: title,
+            title: title.uppercased(),
             isPinned: true,
             subItems: []
         )
@@ -780,5 +883,6 @@ public final class DockViewModel: ObservableObject {
     public func saveConfig() {
         config.items = items.filter { $0.type != .settings }
         persistenceService.saveConfig(config)
+        onConfigUpdated?(config)
     }
 }

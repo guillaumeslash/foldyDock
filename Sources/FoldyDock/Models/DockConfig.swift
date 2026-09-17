@@ -2,40 +2,94 @@ import Foundation
 
 public struct DockConfig: Codable, Equatable, Sendable {
     public var autohideEnabled: Bool
-    public var autohideDelay: Double // In seconds (default: 0.3)
+    public var autohideDelay: Double // In seconds (default: 0.3) - hide delay
+    public var showDelay: Double // In seconds (default: 0.0) - show delay
     public var iconSize: Double // In points (default: 52)
     public var items: [DockItem]
     public var showTrash: Bool // In dock (default: true)
+    public var horizontalPadding: Double // Horizontal dock padding (default: 12.0)
+    public var verticalPadding: Double // Vertical dock padding per side (default: 12.0)
+    public var showAppTitles: Bool // Show titles above app icons (default: true)
+    public var showFolderTitles: Bool // Show titles above folder icons (default: true)
+    public var showPinBadges: Bool // Show pin badge on pinned items (default: true)
+    public var labelDistance: Double // Fixed distance in points between icon and title/indicator (default: 10.0)
+    public var showAppLauncher: Bool // Show FoldyDock Applications launcher at far left (default: true)
+    public var hiddenAppOpacity: Double // Opacity of hidden/minimized apps (default: 0.5)
+
+    public var hideDelay: Double {
+        get { autohideDelay }
+        set { autohideDelay = newValue }
+    }
+
+    public var dockHeight: Double {
+        iconSize + verticalPadding * 2
+    }
 
     enum CodingKeys: String, CodingKey {
         case autohideEnabled
         case autohideDelay
+        case showDelay
         case iconSize
         case items
         case showTrash
+        case horizontalPadding
+        case verticalPadding
+        case showAppTitles
+        case showFolderTitles
+        case showPinBadges
+        case labelDistance
+        case showAppLauncher
+        case hiddenAppOpacity
     }
 
     public init(
         autohideEnabled: Bool = true,
         autohideDelay: Double = 0.3,
+        showDelay: Double = 0.0,
         iconSize: Double = 52.0,
         items: [DockItem] = [],
-        showTrash: Bool = true
+        showTrash: Bool = true,
+        horizontalPadding: Double = 12.0,
+        verticalPadding: Double = 12.0,
+        showAppTitles: Bool = true,
+        showFolderTitles: Bool = true,
+        showPinBadges: Bool = true,
+        labelDistance: Double = 10.0,
+        showAppLauncher: Bool = true,
+        hiddenAppOpacity: Double = 0.5
     ) {
         self.autohideEnabled = autohideEnabled
         self.autohideDelay = autohideDelay
+        self.showDelay = showDelay
         self.iconSize = iconSize
         self.items = items
         self.showTrash = showTrash
+        self.horizontalPadding = horizontalPadding
+        self.verticalPadding = verticalPadding
+        self.showAppTitles = showAppTitles
+        self.showFolderTitles = showFolderTitles
+        self.showPinBadges = showPinBadges
+        self.labelDistance = labelDistance
+        self.showAppLauncher = showAppLauncher
+        self.hiddenAppOpacity = hiddenAppOpacity
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.autohideEnabled = try container.decodeIfPresent(Bool.self, forKey: .autohideEnabled) ?? true
         self.autohideDelay = try container.decodeIfPresent(Double.self, forKey: .autohideDelay) ?? 0.3
+        self.showDelay = try container.decodeIfPresent(Double.self, forKey: .showDelay) ?? 0.0
         self.iconSize = try container.decodeIfPresent(Double.self, forKey: .iconSize) ?? 52.0
         self.items = try container.decodeIfPresent([DockItem].self, forKey: .items) ?? []
         self.showTrash = try container.decodeIfPresent(Bool.self, forKey: .showTrash) ?? true
+        self.horizontalPadding = try container.decodeIfPresent(Double.self, forKey: .horizontalPadding) ?? 12.0
+        self.verticalPadding = try container.decodeIfPresent(Double.self, forKey: .verticalPadding) ?? 12.0
+        self.showAppTitles = try container.decodeIfPresent(Bool.self, forKey: .showAppTitles) ?? true
+        self.showFolderTitles = try container.decodeIfPresent(Bool.self, forKey: .showFolderTitles) ?? true
+        self.showPinBadges = try container.decodeIfPresent(Bool.self, forKey: .showPinBadges) ?? true
+        self.labelDistance = try container.decodeIfPresent(Double.self, forKey: .labelDistance) ?? 10.0
+        self.showAppLauncher = try container.decodeIfPresent(Bool.self, forKey: .showAppLauncher) ?? true
+        self.hiddenAppOpacity = try container.decodeIfPresent(Double.self, forKey: .hiddenAppOpacity) ?? 0.5
     }
 
     /// Default dock configuration with standard macOS applications and an example folder.
@@ -74,7 +128,7 @@ public struct DockConfig: Codable, Equatable, Sendable {
 
         let commFolder = DockItem(
             type: .folder,
-            title: "Communication",
+            title: "COMMUNICATION",
             isPinned: true,
             subItems: [messages, mail]
         )
@@ -98,8 +152,10 @@ public struct DockConfig: Codable, Equatable, Sendable {
         return DockConfig(
             autohideEnabled: true,
             autohideDelay: 0.3,
+            showDelay: 0.0,
             iconSize: 52.0,
-            items: [finder, safari, commFolder, terminal, settings]
+            items: [finder, safari, commFolder, terminal, settings],
+            labelDistance: 10.0
         )
     }
 }

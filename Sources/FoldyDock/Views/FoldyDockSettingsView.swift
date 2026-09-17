@@ -68,9 +68,40 @@ public struct FoldyDockSettingsView: View {
                             if viewModel.config.autohideEnabled {
                                 Divider()
 
+                                // Show delay
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack {
-                                        Text("Délai avant masquage")
+                                        Text("Délai d'apparition (Show delay)")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(.secondary)
+                                        Spacer()
+                                        Text("\(String(format: "%.1f", viewModel.config.showDelay)) s")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.accentColor.opacity(0.12))
+                                            .cornerRadius(4)
+                                    }
+
+                                    Slider(
+                                        value: Binding(
+                                            get: { viewModel.config.showDelay },
+                                            set: { newValue in
+                                                viewModel.config.showDelay = newValue
+                                                viewModel.saveConfig()
+                                            }
+                                        ),
+                                        in: 0.0...1.5,
+                                        step: 0.1
+                                    )
+                                }
+
+                                Divider()
+
+                                // Hide delay
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack {
+                                        Text("Délai de masquage (Hide delay)")
                                             .font(.system(size: 12))
                                             .foregroundStyle(.secondary)
                                         Spacer()
@@ -103,53 +134,240 @@ public struct FoldyDockSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    // Section 2: Taille des icônes
+                    // Section 2: Dimensions & Marges
                     GroupBox {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Text("Taille des icônes")
-                                    .font(.system(size: 13, weight: .medium))
-                                Spacer()
-                                Text("\(Int(viewModel.config.iconSize)) pt")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.accentColor.opacity(0.12))
-                                    .cornerRadius(4)
+                        VStack(alignment: .leading, spacing: 14) {
+                            // Icon size
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("Taille des icônes")
+                                        .font(.system(size: 13, weight: .medium))
+                                    Spacer()
+                                    Text("\(Int(viewModel.config.iconSize)) pt")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.accentColor.opacity(0.12))
+                                        .cornerRadius(4)
+                                }
+
+                                Slider(
+                                    value: Binding(
+                                        get: { viewModel.config.iconSize },
+                                        set: { newValue in
+                                            viewModel.config.iconSize = newValue
+                                            viewModel.saveConfig()
+                                        }
+                                    ),
+                                    in: 32...96,
+                                    step: 2
+                                )
+
+                                HStack(spacing: 8) {
+                                    ForEach([40, 56, 72, 88], id: \.self) { size in
+                                        Button("\(size) pt") {
+                                            viewModel.config.iconSize = Double(size)
+                                            viewModel.saveConfig()
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                        .tint(Int(viewModel.config.iconSize) == size ? Color.accentColor : Color.secondary)
+                                    }
+                                }
                             }
 
-                            Slider(
-                                value: Binding(
-                                    get: { viewModel.config.iconSize },
-                                    set: { newValue in
-                                        viewModel.config.iconSize = newValue
-                                        viewModel.saveConfig()
-                                    }
-                                ),
-                                in: 32...96,
-                                step: 2
-                            )
+                            Divider()
 
-                            HStack(spacing: 8) {
-                                ForEach([40, 56, 72, 88], id: \.self) { size in
-                                    Button("\(size) pt") {
-                                        viewModel.config.iconSize = Double(size)
-                                        viewModel.saveConfig()
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                    .tint(Int(viewModel.config.iconSize) == size ? Color.accentColor : Color.secondary)
+                            // Horizontal padding
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("Marge horizontale (padding)")
+                                        .font(.system(size: 13, weight: .medium))
+                                    Spacer()
+                                    Text("\(Int(viewModel.config.horizontalPadding)) pt")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.accentColor.opacity(0.12))
+                                        .cornerRadius(4)
                                 }
+
+                                Slider(
+                                    value: Binding(
+                                        get: { viewModel.config.horizontalPadding },
+                                        set: { newValue in
+                                            viewModel.config.horizontalPadding = newValue
+                                            viewModel.saveConfig()
+                                        }
+                                    ),
+                                    in: 0...32,
+                                    step: 1
+                                )
+                            }
+
+                            Divider()
+
+                            // Vertical padding
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("Marge verticale (padding)")
+                                        .font(.system(size: 13, weight: .medium))
+                                    Spacer()
+                                    Text("\(Int(viewModel.config.verticalPadding)) pt")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.accentColor.opacity(0.12))
+                                        .cornerRadius(4)
+                                }
+
+                                Slider(
+                                    value: Binding(
+                                        get: { viewModel.config.verticalPadding },
+                                        set: { newValue in
+                                            viewModel.config.verticalPadding = newValue
+                                            viewModel.saveConfig()
+                                        }
+                                    ),
+                                    in: 4...48,
+                                    step: 1
+                                )
+                            }
+
+                            Divider()
+
+                            // Distance titres & pastilles
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("Distance titres & pastilles")
+                                        .font(.system(size: 13, weight: .medium))
+                                    Spacer()
+                                    Text("\(Int(viewModel.config.labelDistance)) px")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.accentColor.opacity(0.12))
+                                        .cornerRadius(4)
+                                }
+
+                                Slider(
+                                    value: Binding(
+                                        get: { viewModel.config.labelDistance },
+                                        set: { newValue in
+                                            viewModel.config.labelDistance = newValue
+                                            viewModel.saveConfig()
+                                        }
+                                    ),
+                                    in: 2...24,
+                                    step: 1
+                                )
                             }
                         }
                         .padding(8)
                     } label: {
-                        Label("Apparence", systemImage: "aspectratio")
+                        Label("Dimensions & Marges", systemImage: "aspectratio")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
 
-                    // Section 3: Organisation du Dock
+                    // Section 3: Affichage & Titres
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle("Afficher les titres des applications", isOn: Binding(
+                                get: { viewModel.config.showAppTitles },
+                                set: { newValue in
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        viewModel.config.showAppTitles = newValue
+                                    }
+                                    viewModel.saveConfig()
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            .font(.system(size: 13, weight: .medium))
+
+                            Divider()
+
+                            Toggle("Afficher les titres des dossiers", isOn: Binding(
+                                get: { viewModel.config.showFolderTitles },
+                                set: { newValue in
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        viewModel.config.showFolderTitles = newValue
+                                    }
+                                    viewModel.saveConfig()
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            .font(.system(size: 13, weight: .medium))
+
+                            Divider()
+
+                            Toggle("Afficher les pastilles d'épinglage", isOn: Binding(
+                                get: { viewModel.config.showPinBadges },
+                                set: { newValue in
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        viewModel.config.showPinBadges = newValue
+                                    }
+                                    viewModel.saveConfig()
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            .font(.system(size: 13, weight: .medium))
+
+                            Divider()
+
+                            Toggle("Lanceur d'applications (logo FoldyDock)", isOn: Binding(
+                                get: { viewModel.config.showAppLauncher },
+                                set: { newValue in
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        viewModel.config.showAppLauncher = newValue
+                                    }
+                                    viewModel.saveConfig()
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            .font(.system(size: 13, weight: .medium))
+
+                            Divider()
+
+                            // Opacité des applications cachées / réduites
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("Opacité des applications cachées")
+                                        .font(.system(size: 13, weight: .medium))
+                                    Spacer()
+                                    Text("\(Int(viewModel.config.hiddenAppOpacity * 100)) %")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.accentColor.opacity(0.12))
+                                        .cornerRadius(4)
+                                }
+
+                                Slider(
+                                    value: Binding(
+                                        get: { viewModel.config.hiddenAppOpacity },
+                                        set: { newValue in
+                                            viewModel.config.hiddenAppOpacity = newValue
+                                            viewModel.saveConfig()
+                                        }
+                                    ),
+                                    in: 0.1...1.0,
+                                    step: 0.05
+                                )
+
+                                Text("Réduit l'opacité des applications masquées (⌘H) ou dont les fenêtres sont réduites (bouton jaune).")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(8)
+                    } label: {
+                        Label("Affichage & Titres", systemImage: "textformat")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    // Section 4: Organisation du Dock
                     GroupBox {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Personnalisez l'agencement du dock avec des séparateurs et des dossiers.")
@@ -202,7 +420,7 @@ public struct FoldyDockSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    // Section 4: Maintenance & Quitter
+                    // Section 5: Maintenance & Quitter
                     VStack(spacing: 10) {
                         Button(action: {
                             showingResetConfirmation = true
@@ -241,6 +459,6 @@ public struct FoldyDockSettingsView: View {
                 .padding(20)
             }
         }
-        .frame(width: 400, height: 500)
+        .frame(width: 420, height: 640)
     }
 }

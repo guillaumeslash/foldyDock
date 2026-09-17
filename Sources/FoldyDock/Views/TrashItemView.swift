@@ -21,28 +21,37 @@ public struct TrashItemView: View {
     private static let dockEmptyTrashPath = "/System/Library/CoreServices/Dock.app/Contents/Resources/trashempty@2x.png"
     private static let dockFullTrashPath = "/System/Library/CoreServices/Dock.app/Contents/Resources/trashfull@2x.png"
 
+    private var itemWidth: CGFloat {
+        max(iconSize + 12, iconSize * 1.22 + 4)
+    }
+
+    private var folderFontSize: CGFloat {
+        max(9.0, min(11.5, iconSize * 0.17))
+    }
+
     private var trashIcon: NSImage {
         let isFull = !viewModel.isTrashEmpty
 
+        let bufferSize = iconSize * 2.5
         // 1. Official macOS UTType icon for trash-empty / trash-full
         let typeIdentifier = isFull ? "com.apple.trash-full" : "com.apple.trash-empty"
         if let utType = UTType(typeIdentifier) {
             let icon = NSWorkspace.shared.icon(for: utType)
-            icon.size = NSSize(width: iconSize * 2, height: iconSize * 2)
+            icon.size = NSSize(width: bufferSize, height: bufferSize)
             return icon
         }
 
         // 2. Fallback to CoreTypes.bundle .icns
         let preferredPath = isFull ? Self.fullTrashPath : Self.emptyTrashPath
         if let icon = NSImage(contentsOfFile: preferredPath) {
-            icon.size = NSSize(width: iconSize * 2, height: iconSize * 2)
+            icon.size = NSSize(width: bufferSize, height: bufferSize)
             return icon
         }
 
         // 3. Fallback to Dock.app bundled images
         let fallbackDockPath = isFull ? Self.dockFullTrashPath : Self.dockEmptyTrashPath
         if let dockIcon = NSImage(contentsOfFile: fallbackDockPath) {
-            dockIcon.size = NSSize(width: iconSize * 2, height: iconSize * 2)
+            dockIcon.size = NSSize(width: bufferSize, height: bufferSize)
             return dockIcon
         }
 
@@ -55,93 +64,72 @@ public struct TrashItemView: View {
     }
 
     public var body: some View {
+        let trashIconScale: CGFloat = 1.18
+        let renderedTrashSize = iconSize * trashIconScale
+
         ZStack(alignment: .center) {
-            // 1. Main trash icon
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-
-                ZStack {
-                    if isDropTargeted {
-                        Circle()
-                            .fill(Color.red.opacity(0.35))
-                            .frame(width: iconSize * 1.15, height: iconSize * 1.15)
-                            .blur(radius: 4)
-                    }
-
-                    Image(nsImage: trashIcon)
-                        .resizable()
-                        .interpolation(.high)
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: iconSize, height: iconSize)
-                        .shadow(color: Color.black.opacity(isHovered ? 0.35 : 0.2), radius: isHovered ? 5 : 2.5, x: 0, y: isHovered ? 3 : 1.5)
+            // 1. Main trash icon - centered vertically
+            ZStack(alignment: .center) {
+                if isDropTargeted {
+                    Circle()
+                        .fill(Color.red.opacity(0.35))
+                        .frame(width: renderedTrashSize * 1.15, height: renderedTrashSize * 1.15)
+                        .blur(radius: 4)
                 }
-                .frame(width: iconSize, height: iconSize)
+
+                Image(nsImage: trashIcon)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: renderedTrashSize, height: renderedTrashSize)
+                    .shadow(color: Color.black.opacity(isHovered ? 0.35 : 0.2), radius: isHovered ? 5 : 2.5, x: 0, y: isHovered ? 3 : 1.5)
             }
             .frame(width: iconSize, height: iconSize)
             .scaleEffect(isDropTargeted ? 1.25 : (isHovered ? 1.12 : 1.0))
             .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isHovered)
             .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isDropTargeted)
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                isHovered = hovering
-                if hovering {
-                    viewModel.updateTrashStatus()
-                }
-            }
-            .onTapGesture {
-                viewModel.openTrash()
-            }
-            .contextMenu {
-                Button("Ouvrir la corbeille") {
-                    viewModel.openTrash()
-                }
 
-                Button("Vider la corbeille") {
-                    viewModel.emptyTrash()
-                }
-
-                Divider()
-
-                Button("Masquer la corbeille") {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                        viewModel.toggleTrash()
-                    }
-                }
-            }
-
-            // 2. Tooltip above trash on hover
-            if isHovered && !isDropTargeted {
-                VStack {
-                    Text("Corbeille")
-                        .font(.system(size: max(10, min(12, iconSize * 0.22)), weight: .semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(
-                            VisualEffectBackground(
-                                material: .hudWindow,
-                                blendingMode: .withinWindow,
-                                cornerRadius: 6
-                            )
-                        )
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color(white: 0.15).opacity(0.85))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
-                        )
-                        .shadow(color: Color.black.opacity(0.35), radius: 4, x: 0, y: 2)
-                        .offset(y: -(dockHeight * 0.5 + 20))
-                    Spacer(minLength: 0)
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                .animation(.easeInOut(duration: 0.15), value: isHovered)
+            // 2. Title "Corbeille" positioned above the icon at fixed distance
+            if viewModel.config.showAppTitles {
+                Text("Corbeille")
+                    .font(.system(size: folderFontSize, weight: .medium, design: .rounded))
+                    .foregroundColor(isHovered ? .white : Color.white.opacity(0.92))
+                    .shadow(color: Color.black.opacity(0.8), radius: 1.5, x: 0, y: 1)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: itemWidth + 8)
+                    .offset(y: -(iconSize / 2 + viewModel.config.labelDistance))
             }
         }
-        .frame(width: iconSize, height: dockHeight)
+        .frame(width: itemWidth, height: dockHeight, alignment: .center)
+        .contentShape(Rectangle())
+        .help("Corbeille")
+        .onHover { hovering in
+            isHovered = hovering
+            if hovering {
+                viewModel.updateTrashStatus()
+            }
+        }
+        .onTapGesture {
+            viewModel.openTrash()
+        }
+        .contextMenu {
+            Button("Ouvrir la corbeille") {
+                viewModel.openTrash()
+            }
+
+            Button("Vider la corbeille") {
+                viewModel.emptyTrash()
+            }
+
+            Divider()
+
+            Button("Masquer la corbeille") {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                    viewModel.toggleTrash()
+                }
+            }
+        }
         .onDrop(of: [.plainText, .utf8PlainText, .text], isTargeted: $isDropTargeted) { _ in
             defer {
                 viewModel.clearDropState()

@@ -7,6 +7,10 @@ public final class DockPanel: NSPanel {
     private var inactivityTimer: Timer?
     public var autohideEnabled: Bool = true
     public var autohideDelay: TimeInterval = 0.3
+    public var showDelay: TimeInterval = 0.0
+
+    private var showTimer: Timer?
+    private var pendingShowScreen: NSScreen?
 
     private(set) public var isHiddenState: Bool = false
     private var shownY: CGFloat = 18
@@ -27,6 +31,7 @@ public final class DockPanel: NSPanel {
         self.dockHeight = initialDockHeight
         let initialScreen = NSScreen.screens.first ?? NSScreen.main ?? NSScreen()
         self.currentScreen = initialScreen
+        self.shownY = initialScreen.frame.origin.y + 18
         self.hotspotManager = HotspotManager()
 
         super.init(
@@ -56,7 +61,11 @@ public final class DockPanel: NSPanel {
 
         hotspotManager.onCursorHitEdge = { [weak self] screen in
             guard let self = self else { return }
-            self.showDock(on: screen, animated: true)
+            self.requestShowDock(on: screen)
+        }
+        hotspotManager.onCursorLeaveEdge = { [weak self] in
+            guard let self = self else { return }
+            self.cancelPendingShow()
         }
 
         reposition()
@@ -87,6 +96,7 @@ public final class DockPanel: NSPanel {
     }
 
     public func reposition() {
+        cancelPendingShow()
         let screen = currentScreen
         let screenFrame = screen.frame
 
@@ -98,11 +108,13 @@ public final class DockPanel: NSPanel {
             let hideTargetY = screenFrame.origin.y
             self.setFrame(NSRect(x: x, y: hideTargetY, width: width, height: dockHeight), display: true)
             self.alphaValue = 0.0
+            self.ignoresMouseEvents = true
             self.orderOut(nil)
             hotspotManager.orderFrontAll()
         } else {
             self.setFrame(NSRect(x: x, y: shownY, width: width, height: dockHeight), display: true)
             self.alphaValue = 1.0
+            self.ignoresMouseEvents = false
             self.orderFrontRegardless()
             hotspotManager.orderOutAll()
             if autohideEnabled {
@@ -134,29 +146,99 @@ public final class DockPanel: NSPanel {
         }
     }
 
+    public func requestShowDock(on screen: NSScreen? = nil) {
+        hideTimer?.invalidate()
+        hideTimer = nil
+
+        guard isHiddenState else { return }
+
+        if showDelay <= 0.01 {
+            showDock(on: screen, animated: true)
+            return
+        }
+
+        if showTimer != nil {
+            if let screen = screen {
+                self.pendingShowScreen = screen
+            }
+            return
+        }
+
+        self.pendingShowScreen = screen
+        showTimer = Timer.scheduledTimer(withTimeInterval: showDelay, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self, self.isHiddenState else { return }
+                let target = self.pendingShowScreen ?? self.currentScreen
+                self.showDock(on: target, animated: true)
+            }
+        }
+    }
+
+    public func cancelPendingShow() {
+        showTimer?.invalidate()
+        showTimer = nil
+        pendingShowScreen = nil
+    }
+
+    // MARK: - Mouse & Zone Detection
+
+    /// Returns true if the cursor is within the dock or in the gap directly underneath it
+    public func isMouseInDockZone(at loc: NSPoint) -> Bool {
+        if self.frame.contains(loc) {
+            return true
+        }
+
+        if !isHiddenState && self.isVisible {
+            let screenFrame = currentScreen.frame
+            let inBottomGapY = (loc.y >= screenFrame.origin.y && loc.y <= self.frame.minY)
+            let inDockXRange = (loc.x >= (self.frame.minX - 16) && loc.x <= (self.frame.maxX + 16))
+            if inBottomGapY && inDockXRange {
+                return true
+            }
+        }
+
+        return false
+    }
+
     public func mouseDidEnter() {
+        guard !ignoresMouseEvents else { return }
         hideTimer?.invalidate()
         hideTimer = nil
         inactivityTimer?.invalidate()
         inactivityTimer = nil
 
         if isHiddenState {
-            showDock(on: currentScreen, animated: true)
+            requestShowDock(on: currentScreen)
         }
     }
 
     public var shouldPreventAutoHide: (() -> Bool)?
 
     public func mouseDidExit() {
+        guard !ignoresMouseEvents else { return }
+        cancelPendingShow()
         guard autohideEnabled else { return }
         if shouldPreventAutoHide?() == true {
             return
         }
+        let mouseLoc = NSEvent.mouseLocation
+        if isMouseInDockZone(at: mouseLoc) {
+            return
+        }
+        scheduleHideTimer()
+    }
+
+    public func scheduleHideTimer() {
         hideTimer?.invalidate()
         hideTimer = Timer.scheduledTimer(withTimeInterval: autohideDelay, repeats: false) { [weak self] _ in
             Task { @MainActor in
-                guard self?.shouldPreventAutoHide?() != true else { return }
-                self?.hideDock(animated: true)
+                guard let self = self else { return }
+                guard self.shouldPreventAutoHide?() != true else { return }
+                let currentLoc = NSEvent.mouseLocation
+                if self.isMouseInDockZone(at: currentLoc) {
+                    return
+                }
+                self.hideDock(animated: true)
             }
         }
     }
@@ -168,7 +250,7 @@ public final class DockPanel: NSPanel {
                 guard let self = self, !self.isHiddenState else { return }
                 if self.shouldPreventAutoHide?() != true {
                     let mouseLoc = NSEvent.mouseLocation
-                    if !self.frame.contains(mouseLoc) {
+                    if !self.isMouseInDockZone(at: mouseLoc) {
                         self.hideDock(animated: true)
                     }
                 }
@@ -177,6 +259,7 @@ public final class DockPanel: NSPanel {
     }
 
     public func showDock(on screen: NSScreen? = nil, animated: Bool = true) {
+        cancelPendingShow()
         hideTimer?.invalidate()
         hideTimer = nil
         inactivityTimer?.invalidate()
@@ -186,6 +269,7 @@ public final class DockPanel: NSPanel {
         let isSwitchingScreen = (targetScreen != self.currentScreen)
         self.currentScreen = targetScreen
         self.isHiddenState = false
+        self.ignoresMouseEvents = false
         hotspotManager.orderOutAll()
 
         let screenFrame = targetScreen.frame
@@ -230,18 +314,20 @@ public final class DockPanel: NSPanel {
     }
 
     public func hideDock(animated: Bool = true) {
+        cancelPendingShow()
         hideTimer?.invalidate()
         hideTimer = nil
         inactivityTimer?.invalidate()
         inactivityTimer = nil
         isHiddenState = true
+        self.ignoresMouseEvents = true
 
         let screen = currentScreen
         let screenFrame = screen.frame
         let width = self.frame.width > 0 ? self.frame.width : 500
         let x = screenFrame.origin.x + (screenFrame.width - width) / 2
 
-        // Slide towards the bottom edge of the current screen (never crossing into a screen below)
+        // Slide towards the bottom edge of the current screen
         let hideTargetY = screenFrame.origin.y
         let targetFrame = NSRect(
             x: x,
@@ -291,9 +377,23 @@ public final class DockPanel: NSPanel {
             MainActor.assumeIsolated {
                 guard let self = self else { return }
                 let loc = NSEvent.mouseLocation
-                if let targetScreen = self.screenForBottomEdge(at: loc) {
-                    if self.isHiddenState || targetScreen != self.currentScreen {
-                        self.showDock(on: targetScreen, animated: true)
+
+                if self.isHiddenState {
+                    if let targetScreen = self.screenForBottomEdge(at: loc) {
+                        self.requestShowDock(on: targetScreen)
+                    } else {
+                        self.cancelPendingShow()
+                    }
+                } else {
+                    if self.isMouseInDockZone(at: loc) {
+                        if self.hideTimer != nil {
+                            self.hideTimer?.invalidate()
+                            self.hideTimer = nil
+                        }
+                    } else {
+                        if self.autohideEnabled && self.hideTimer == nil && self.shouldPreventAutoHide?() != true {
+                            self.scheduleHideTimer()
+                        }
                     }
                 }
             }

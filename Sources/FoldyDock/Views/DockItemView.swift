@@ -98,7 +98,9 @@ public struct DockItemView: View {
                             isHighlighted: dropPlacement == .merge,
                             bouncingSubItemIds: viewModel.bouncingItemIds,
                             runningSubItemIds: viewModel.runningSubItemIds(for: item),
-                            subItemWindowCounts: viewModel.subItemWindowCounts(for: item)
+                            subItemWindowCounts: viewModel.subItemWindowCounts(for: item),
+                            hiddenSubItemIds: viewModel.hiddenSubItemIds(for: item),
+                            hiddenAppOpacity: viewModel.config.hiddenAppOpacity
                         )
                     case .separator:
                         Rectangle()
@@ -121,10 +123,14 @@ public struct DockItemView: View {
                         .shadow(color: Color.black.opacity(0.2), radius: 2.5, x: 0, y: 1.5)
                     case .app:
                         let appIconScale: CGFloat = 1.22
+                        let isAppHidden = isRunning && viewModel.isItemHidden(item)
+                        let effectiveOpacity = isAppHidden ? (isHovered ? min(1.0, viewModel.config.hiddenAppOpacity + 0.25) : viewModel.config.hiddenAppOpacity) : 1.0
                         Image(nsImage: IconProvider.shared.icon(for: item, size: iconSize * appIconScale))
                             .resizable()
                             .scaledToFit()
                             .frame(width: iconSize * appIconScale, height: iconSize * appIconScale)
+                            .opacity(effectiveOpacity)
+                            .animation(.easeInOut(duration: 0.25), value: isAppHidden)
                             .overlay(
                                 Group {
                                     if dropPlacement == .merge {
@@ -137,12 +143,12 @@ public struct DockItemView: View {
                                     }
                                 }
                             )
-                            .shadow(color: Color.black.opacity(0.2), radius: 2.5, x: 0, y: 1.5)
+                            .shadow(color: Color.black.opacity(isAppHidden ? 0.1 : 0.2), radius: 2.5, x: 0, y: 1.5)
                     }
                 }
                 .frame(width: item.type == .separator ? 14 : iconSize, height: iconSize)
                 .overlay(alignment: .topTrailing) {
-                    if item.isPinned && (item.type == .app || item.type == .folder) {
+                    if viewModel.config.showPinBadges && item.isPinned && (item.type == .app || item.type == .folder) {
                         PinBadgeView(size: 13)
                             .offset(x: 3, y: -3)
                     }
@@ -174,17 +180,17 @@ public struct DockItemView: View {
                 contextMenuItems
             }
 
-            // 2. Title (apps & folders) positioned above the icon in the top margin
-            if item.type == .folder {
-                Text(item.title)
-                    .font(.system(size: folderFontSize, weight: .bold, design: .rounded))
+            // 2. Title (apps & folders) positioned above the icon at fixed distance
+            if item.type == .folder && viewModel.config.showFolderTitles {
+                Text(item.title.uppercased())
+                    .font(.system(size: folderFontSize, weight: .medium, design: .rounded))
                     .foregroundColor(isHovered ? .white : Color.white.opacity(0.92))
                     .shadow(color: Color.black.opacity(0.8), radius: 1.5, x: 0, y: 1)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: itemWidth + 8)
-                    .offset(y: -(iconSize / 2 + 10))
-            } else if item.type == .app {
+                    .offset(y: -(iconSize / 2 + viewModel.config.labelDistance))
+            } else if item.type == .app && viewModel.config.showAppTitles {
                 Text(item.title)
                     .font(.system(size: folderFontSize, weight: .medium, design: .rounded))
                     .foregroundColor(isHovered ? .white : Color.white.opacity(0.92))
@@ -192,7 +198,7 @@ public struct DockItemView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: itemWidth + 8)
-                    .offset(y: -(iconSize / 2 + 10))
+                    .offset(y: -(iconSize / 2 + viewModel.config.labelDistance))
             }
 
             // 3. Running indicator dot(s) positioned below the icon in the bottom margin
@@ -294,16 +300,17 @@ public struct DockItemView: View {
 
     @ViewBuilder
     private var runningIndicatorView: some View {
+        let indicatorOffset = iconSize / 2 + viewModel.config.labelDistance
         if item.type == .folder {
             // Sous les dossiers sur le dock, une simple pastille suffit
             Circle()
                 .fill(Color.white.opacity(0.95))
                 .frame(width: 4, height: 4)
                 .shadow(color: Color.white.opacity(0.8), radius: 2)
-                .offset(y: iconSize / 2 + 10)
+                .offset(y: indicatorOffset)
         } else {
             MultiWindowIndicatorView(windowCount: windowCount, dotSize: 4.0, spacing: 3.0)
-                .offset(y: iconSize / 2 + 10)
+                .offset(y: indicatorOffset)
         }
     }
 

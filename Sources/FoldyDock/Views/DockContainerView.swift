@@ -11,16 +11,51 @@ public struct DockContainerView: View {
     }
 
     public var body: some View {
-        let dockHeight = viewModel.config.iconSize + 40
+        let dockHeight = viewModel.dockHeight
         let cornerRadius = dockHeight * 0.285
 
-        HStack(spacing: 0) {
-            // Left Resize Handle
-            ResizeHandleView(viewModel: viewModel, isRightEdge: false)
+        HStack(spacing: 8) {
+            // FoldyDock Applications Launcher at the far left
+            if viewModel.config.showAppLauncher {
+                AppLauncherView(
+                    viewModel: viewModel,
+                    iconSize: viewModel.config.iconSize,
+                    dockHeight: dockHeight
+                )
+            }
 
-            HStack(spacing: 8) {
-                // Pinned items (Apps & Folders)
-                ForEach(viewModel.items) { item in
+            // Pinned items (Apps & Folders)
+            ForEach(viewModel.items) { item in
+                DockItemView(
+                    viewModel: viewModel,
+                    item: item,
+                    iconSize: viewModel.config.iconSize,
+                    dockHeight: dockHeight
+                )
+            }
+
+            // Divider between pinned items and unpinned running applications
+            if !viewModel.unpinnedRunningItems.isEmpty {
+                Rectangle()
+                    .fill(Color.white.opacity(0.25))
+                    .frame(width: 1, height: viewModel.config.iconSize * 0.65)
+                    .padding(.horizontal, 2)
+                    .contentShape(Rectangle().inset(by: -6))
+                    .onDrop(of: [.plainText, .utf8PlainText, .text], isTargeted: nil) { _ in
+                        defer {
+                            viewModel.clearDropState()
+                        }
+                        if let sourceId = viewModel.dragSourceId {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                                viewModel.moveItemToEnd(sourceId: sourceId)
+                            }
+                            return true
+                        }
+                        return false
+                    }
+
+                // Unpinned running applications
+                ForEach(viewModel.unpinnedRunningItems) { item in
                     DockItemView(
                         viewModel: viewModel,
                         item: item,
@@ -28,69 +63,36 @@ public struct DockContainerView: View {
                         dockHeight: dockHeight
                     )
                 }
+            }
 
-                // Divider between pinned items and unpinned running applications
-                if !viewModel.unpinnedRunningItems.isEmpty {
+            // Trash at the far right of the dock
+            if viewModel.config.showTrash {
+                let hasPrecedingSeparator: Bool = {
+                    if !viewModel.unpinnedRunningItems.isEmpty {
+                        return viewModel.unpinnedRunningItems.last?.type == .separator
+                    } else {
+                        return viewModel.items.last?.type == .separator
+                    }
+                }()
+
+                if !hasPrecedingSeparator {
                     Rectangle()
                         .fill(Color.white.opacity(0.25))
                         .frame(width: 1, height: viewModel.config.iconSize * 0.65)
                         .padding(.horizontal, 2)
-                        .contentShape(Rectangle().inset(by: -6))
-                        .onDrop(of: [.plainText, .utf8PlainText, .text], isTargeted: nil) { _ in
-                            defer {
-                                viewModel.clearDropState()
-                            }
-                            if let sourceId = viewModel.dragSourceId {
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                                    viewModel.moveItemToEnd(sourceId: sourceId)
-                                }
-                                return true
-                            }
-                            return false
-                        }
-
-                    // Unpinned running applications
-                    ForEach(viewModel.unpinnedRunningItems) { item in
-                        DockItemView(
-                            viewModel: viewModel,
-                            item: item,
-                            iconSize: viewModel.config.iconSize,
-                            dockHeight: dockHeight
-                        )
-                    }
                 }
 
-                // Trash at the far right of the dock
-                if viewModel.config.showTrash {
-                    let hasPrecedingSeparator: Bool = {
-                        if !viewModel.unpinnedRunningItems.isEmpty {
-                            return viewModel.unpinnedRunningItems.last?.type == .separator
-                        } else {
-                            return viewModel.items.last?.type == .separator
-                        }
-                    }()
-
-                    if !hasPrecedingSeparator {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.25))
-                            .frame(width: 1, height: viewModel.config.iconSize * 0.65)
-                            .padding(.horizontal, 2)
-                    }
-
-                    TrashItemView(
-                        viewModel: viewModel,
-                        iconSize: viewModel.config.iconSize,
-                        dockHeight: dockHeight
-                    )
-                }
+                TrashItemView(
+                    viewModel: viewModel,
+                    iconSize: viewModel.config.iconSize,
+                    dockHeight: dockHeight
+                )
             }
-            .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.items)
-            .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.config.showTrash)
-            .padding(.horizontal, 6)
-
-            // Right Resize Handle
-            ResizeHandleView(viewModel: viewModel, isRightEdge: true)
         }
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.items)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.config.showTrash)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.config.showAppLauncher)
+        .padding(.horizontal, viewModel.config.horizontalPadding)
         .background(
             ZStack {
                 VisualEffectBackground(
@@ -126,7 +128,6 @@ public struct DockContainerView: View {
             }
         )
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .shadow(color: Color.black.opacity(0.35), radius: 12, x: 0, y: 6)
         .coordinateSpace(name: "dockContainer")
         .onDrop(of: [.plainText, .utf8PlainText, .text], isTargeted: nil) { _ in
             defer {

@@ -2,6 +2,7 @@ import AppKit
 
 public final class HotspotPanel: NSPanel {
     public var onCursorHitEdge: (() -> Void)?
+    public var onCursorLeaveEdge: (() -> Void)?
 
     public init(screen: NSScreen) {
         super.init(
@@ -21,6 +22,9 @@ public final class HotspotPanel: NSPanel {
         let view = HotspotView()
         view.onMouseEnter = { [weak self] in
             self?.onCursorHitEdge?()
+        }
+        view.onMouseLeave = { [weak self] in
+            self?.onCursorLeaveEdge?()
         }
         self.contentView = view
         updatePosition(screen: screen)
@@ -42,6 +46,7 @@ public final class HotspotPanel: NSPanel {
 public final class HotspotManager {
     private var panels: [HotspotPanel] = []
     public var onCursorHitEdge: ((NSScreen) -> Void)?
+    public var onCursorLeaveEdge: (() -> Void)?
 
     public init() {
         updateScreens()
@@ -55,6 +60,9 @@ public final class HotspotManager {
             let panel = HotspotPanel(screen: screen)
             panel.onCursorHitEdge = { [weak self] in
                 self?.onCursorHitEdge?(screen)
+            }
+            panel.onCursorLeaveEdge = { [weak self] in
+                self?.onCursorLeaveEdge?()
             }
             panels.append(panel)
         }
@@ -71,6 +79,7 @@ public final class HotspotManager {
 
 private final class HotspotView: NSView {
     var onMouseEnter: (() -> Void)?
+    var onMouseLeave: (() -> Void)?
     private var trackingArea: NSTrackingArea?
 
     override func draw(_ dirtyRect: NSRect) {
@@ -96,5 +105,9 @@ private final class HotspotView: NSView {
 
     override func mouseEntered(with event: NSEvent) {
         onMouseEnter?()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onMouseLeave?()
     }
 }

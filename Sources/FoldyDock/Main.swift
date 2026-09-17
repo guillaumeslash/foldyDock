@@ -22,12 +22,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let vm = DockViewModel()
         self.viewModel = vm
 
-        let initialDockHeight = vm.config.iconSize + 40
+        let initialDockHeight = vm.dockHeight
         var pendingDockSize: CGSize?
 
         let containerView = DockContainerView(viewModel: vm) { [weak self] newSize in
             if let panel = self?.dockPanel {
-                let adjustedWidth = max(newSize.width + 16, 200)
+                let adjustedWidth = max(ceil(newSize.width), 200)
                 panel.updateDockSize(width: adjustedWidth, height: newSize.height)
             } else {
                 pendingDockSize = newSize
@@ -41,10 +41,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = DockPanel(contentView: hostingView, initialDockHeight: initialDockHeight)
         panel.autohideEnabled = vm.config.autohideEnabled
         panel.autohideDelay = vm.config.autohideDelay
+        panel.showDelay = vm.config.showDelay
 
         vm.onAutohideToggled = { [weak panel, weak self] enabled in
             panel?.autohideEnabled = enabled
             self?.updateMenuBarAutohideState(enabled)
+        }
+        vm.onConfigUpdated = { [weak panel] updatedConfig in
+            panel?.autohideDelay = updatedConfig.autohideDelay
+            panel?.showDelay = updatedConfig.showDelay
         }
         vm.onResetDock = { [weak panel] in
             panel?.reposition()
@@ -60,13 +65,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if NSEvent.pressedMouseButtons == 0 && vm.dragSourceId != nil {
                 vm.clearDropState()
             }
-            return vm.activeFolder != nil || vm.dragSourceId != nil || vm.activeDropTargetId != nil || vm.isResizing
+            return vm.activeFolder != nil || vm.isApplicationsLauncherOpen || vm.dragSourceId != nil || vm.activeDropTargetId != nil || vm.isResizing
         }
 
         self.dockPanel = panel
 
         if let size = pendingDockSize {
-            let adjustedWidth = max(size.width + 16, 200)
+            let adjustedWidth = max(ceil(size.width), 200)
             panel.updateDockSize(width: adjustedWidth, height: size.height)
         }
 

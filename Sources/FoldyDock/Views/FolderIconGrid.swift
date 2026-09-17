@@ -8,6 +8,8 @@ public struct FolderIconGrid: View {
     public var bouncingSubItemIds: Set<UUID>
     public var runningSubItemIds: Set<UUID>
     public var subItemWindowCounts: [UUID: Int]
+    public var hiddenSubItemIds: Set<UUID>
+    public var hiddenAppOpacity: Double
 
     public init(
         item: DockItem,
@@ -15,7 +17,9 @@ public struct FolderIconGrid: View {
         isHighlighted: Bool = false,
         bouncingSubItemIds: Set<UUID> = [],
         runningSubItemIds: Set<UUID> = [],
-        subItemWindowCounts: [UUID: Int] = [:]
+        subItemWindowCounts: [UUID: Int] = [:],
+        hiddenSubItemIds: Set<UUID> = [],
+        hiddenAppOpacity: Double = 0.5
     ) {
         self.item = item
         self.size = size
@@ -23,6 +27,8 @@ public struct FolderIconGrid: View {
         self.bouncingSubItemIds = bouncingSubItemIds
         self.runningSubItemIds = runningSubItemIds
         self.subItemWindowCounts = subItemWindowCounts
+        self.hiddenSubItemIds = hiddenSubItemIds
+        self.hiddenAppOpacity = hiddenAppOpacity
     }
 
     private var subItems: [DockItem] {
@@ -135,6 +141,7 @@ public struct FolderIconGrid: View {
             let sub = subItems[index]
             let isBouncing = bouncingSubItemIds.contains(sub.id)
             let isRunning = runningSubItemIds.contains(sub.id)
+            let isHidden = hiddenSubItemIds.contains(sub.id)
             let wCount = subItemWindowCounts[sub.id] ?? (isRunning ? 1 : 0)
 
             VStack(spacing: layout.dotSpacing) {
@@ -143,6 +150,7 @@ public struct FolderIconGrid: View {
                     .scaledToFit()
                     .frame(width: layout.iconSize, height: layout.iconSize)
                     .clipShape(RoundedRectangle(cornerRadius: layout.cornerRadius, style: .continuous))
+                    .opacity(isHidden ? hiddenAppOpacity : 1.0)
                     .dockBounce(isBouncing: isBouncing, height: layout.bounceHeight)
 
                 // Multi-pastilles sous la mini app ouverte
