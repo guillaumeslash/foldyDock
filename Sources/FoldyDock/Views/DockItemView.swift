@@ -46,7 +46,7 @@ public struct DockItemView: View {
         }
         let baseWidth = max(iconSize + 12, iconSize * 1.22 + 4)
         if isExpandedFolder {
-            let folderSize = iconSize * 0.82
+            let folderSize = iconSize
             let subAppSlotWidth = max(48.0, iconSize * 0.92)
             let dividerAndPadding: CGFloat = 8.0 + 1.2 + 8.0 + 14.0
             let totalRunningWidth = CGFloat(runningSubItems.count) * subAppSlotWidth + CGFloat(max(0, runningSubItems.count - 1)) * 6.0

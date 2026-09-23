@@ -46,7 +46,7 @@ public struct ExpandedFolderBubbleView: View {
     }
 
     private var folderSize: CGFloat {
-        iconSize * 0.82
+        iconSize
     }
 
     private var subAppIconSize: CGFloat {
