@@ -16,6 +16,10 @@ _Avoid_: Directory, group, category
 The ordered collection and structural tree of dock items, enforcing grouping, reordering, and dissolution invariants.
 _Avoid_: ItemList, layout tree, container
 
+**Folder Capsule**:
+An expanded visual container deployed around an active folder and its running sub-applications, preserving the folder miniature's scale and dock height.
+_Avoid_: Expanded bubble, folder popup, sub-dock
+
 **Pinned Application**:
 An application persistently positioned in the dock root or inside a folder.
 _Avoid_: Favorite, anchored app, bookmark
