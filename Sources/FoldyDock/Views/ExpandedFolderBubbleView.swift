@@ -223,6 +223,13 @@ public struct ExpandedFolderBubbleView: View {
                     .frame(maxWidth: max(40, capsuleWidth - 8))
                     .offset(y: -(iconSize / 2 + viewModel.config.labelDistance))
             }
+
+            // 5. Pastille d'activité centrée sous toute la capsule
+            Circle()
+                .fill(Color.white.opacity(0.95))
+                .frame(width: 4, height: 4)
+                .shadow(color: Color.white.opacity(0.8), radius: 2)
+                .offset(y: iconSize / 2 + viewModel.config.labelDistance)
         }
     }
 }
