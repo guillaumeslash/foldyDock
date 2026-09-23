@@ -413,17 +413,23 @@ public final class DockViewModel: ObservableObject {
     }
 
     public func removeItem(itemId: UUID) {
-        if let index = items.firstIndex(where: { $0.id == itemId }) {
-            let item = items.remove(at: index)
+        if let unpinnedIndex = unpinnedRunningItems.firstIndex(where: { $0.id == itemId }) {
+            let item = unpinnedRunningItems.remove(at: unpinnedIndex)
+            terminate(item: item)
+            return
+        }
+
+        guard let item = hierarchyEngine.findItem(byId: itemId) else { return }
+        var engine = hierarchyEngine
+        if engine.removeItem(itemId: itemId) {
+            self.hierarchyEngine = engine
+            self.items = engine.items
             if isItemRunning(item) {
                 var unpinned = item
                 unpinned.isPinned = false
                 unpinnedRunningItems.append(unpinned)
             }
             saveConfig()
-        } else if let index = unpinnedRunningItems.firstIndex(where: { $0.id == itemId }) {
-            let item = unpinnedRunningItems.remove(at: index)
-            terminate(item: item)
         }
     }
 
