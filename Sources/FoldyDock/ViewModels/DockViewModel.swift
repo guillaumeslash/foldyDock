@@ -6,7 +6,14 @@ import AppKit
 @MainActor
 public final class DockViewModel: ObservableObject {
     @Published public var config: DockConfig
-    @Published public var items: [DockItem] = []
+    @Published public var items: [DockItem] = [] {
+        didSet {
+            if hierarchyEngine.items != items {
+                hierarchyEngine.items = items
+            }
+        }
+    }
+    public private(set) var hierarchyEngine: DockHierarchyEngine = DockHierarchyEngine()
     @Published public var unpinnedRunningItems: [DockItem] = []
 
     @Published public var activeFolder: DockItem?
@@ -423,29 +430,24 @@ public final class DockViewModel: ObservableObject {
     // MARK: - Folder Management
 
     public func renameFolder(folderId: UUID, newTitle: String) {
-        guard let index = items.firstIndex(where: { $0.id == folderId }) else { return }
+        var engine = hierarchyEngine
         let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        let finalTitle = (trimmed.isEmpty ? "DOSSIER" : trimmed).uppercased()
-        items[index].title = finalTitle
-        if activeFolder?.id == folderId {
-            activeFolder = items[index]
+        let finalTitle = trimmed.isEmpty ? "DOSSIER" : trimmed
+        if engine.renameFolder(folderId: folderId, newTitle: finalTitle) {
+            self.hierarchyEngine = engine
+            self.items = engine.items
+            if activeFolder?.id == folderId {
+                activeFolder = items.first(where: { $0.id == folderId })
+            }
+            saveConfig()
         }
-        saveConfig()
     }
 
     public func findItem(byId id: UUID) -> DockItem? {
-        if let item = items.first(where: { $0.id == id }) {
-            return item
-        }
         if let unpinned = unpinnedRunningItems.first(where: { $0.id == id }) {
             return unpinned
         }
-        for item in items where item.type == .folder {
-            if let sub = item.subItems?.first(where: { $0.id == id }) {
-                return sub
-            }
-        }
-        return nil
+        return hierarchyEngine.findItem(byId: id)
     }
 
     public func handleMiddleClick(at localPoint: CGPoint) {
@@ -473,154 +475,61 @@ public final class DockViewModel: ObservableObject {
 
     public func mergeIntoFolder(sourceId: UUID, targetId: UUID, folderName: String = "Dossier") {
         guard sourceId != targetId else { return }
-
-        // Find and extract source item (from pinned items, unpinned running apps, or from an existing folder)
-        var sourceItem: DockItem?
-
-        if let sourceIndex = items.firstIndex(where: { $0.id == sourceId }) {
-            sourceItem = items.remove(at: sourceIndex)
-        } else if let unpinnedIndex = unpinnedRunningItems.firstIndex(where: { $0.id == sourceId }) {
-            var unpinned = unpinnedRunningItems.remove(at: unpinnedIndex)
-            unpinned.isPinned = true
-            sourceItem = unpinned
-        } else {
-            for folderIndex in items.indices where items[folderIndex].type == .folder {
-                if var children = items[folderIndex].subItems,
-                   let childIndex = children.firstIndex(where: { $0.id == sourceId }) {
-                    let folderId = items[folderIndex].id
-                    sourceItem = children.remove(at: childIndex)
-                    items[folderIndex].subItems = children
-                    IconProvider.shared.invalidateCache(for: folderId)
-                    break
-                }
-            }
-        }
-
-        guard let source = sourceItem else { return }
-
-        // Find target item
-        guard let targetIndex = items.firstIndex(where: { $0.id == targetId }) else {
-            // Target not found, restore source to items
-            items.append(source)
+        var engine = hierarchyEngine
+        let success = engine.merge(
+            sourceId: sourceId,
+            targetId: targetId,
+            unpinnedItems: &unpinnedRunningItems,
+            folderName: folderName
+        )
+        if success {
+            self.hierarchyEngine = engine
+            self.items = engine.items
+            IconProvider.shared.invalidateCache(for: targetId)
             saveConfig()
-            return
         }
-
-        var target = items[targetIndex]
-
-        if target.type == .folder {
-            var subItems = target.subItems ?? []
-            if source.type == .folder {
-                subItems.append(contentsOf: source.subItems ?? [])
-            } else {
-                subItems.append(source)
-            }
-            target.subItems = subItems
-            items[targetIndex] = target
-            IconProvider.shared.invalidateCache(for: target.id)
-        } else {
-            // Target is an app -> create a new folder containing [target, source]
-            var folderChildren: [DockItem] = []
-            folderChildren.append(target)
-            if source.type == .folder {
-                folderChildren.append(contentsOf: source.subItems ?? [])
-            } else {
-                folderChildren.append(source)
-            }
-
-            let newFolder = DockItem(
-                id: UUID(),
-                type: .folder,
-                title: folderName.uppercased(),
-                isPinned: true,
-                subItems: folderChildren
-            )
-            items[targetIndex] = newFolder
-            IconProvider.shared.invalidateCache(for: newFolder.id)
-        }
-
-        saveConfig()
     }
 
     public func removeFromFolder(subItemId: UUID, folderId: UUID) {
-        guard let folderIndex = items.firstIndex(where: { $0.id == folderId }),
-              var subItems = items[folderIndex].subItems,
-              let subIndex = subItems.firstIndex(where: { $0.id == subItemId }) else {
-            return
+        var engine = hierarchyEngine
+        let result = engine.removeFromFolder(subItemId: subItemId, folderId: folderId)
+        if result.removedItem != nil {
+            self.hierarchyEngine = engine
+            self.items = engine.items
+            IconProvider.shared.invalidateCache(for: folderId)
+            if activeFolder?.id == folderId {
+                activeFolder = items.first(where: { $0.id == folderId })
+            }
+            saveConfig()
         }
-
-        let extractedItem = subItems.remove(at: subIndex)
-        items[folderIndex].subItems = subItems
-
-        // Insert extracted item right next to the folder
-        items.insert(extractedItem, at: folderIndex + 1)
-        IconProvider.shared.invalidateCache(for: folderId)
-        if activeFolder?.id == folderId {
-            activeFolder = items.first(where: { $0.id == folderId })
-        }
-        saveConfig()
     }
 
     public func moveSubItem(folderId: UUID, sourceId: UUID, targetId: UUID, placement: DropPlacement = .before) {
         guard sourceId != targetId else { return }
-        guard let folderIndex = items.firstIndex(where: { $0.id == folderId }),
-              var subItems = items[folderIndex].subItems else {
-            return
-        }
-
-        var sourceItem: DockItem?
-
-        if let sourceIndex = subItems.firstIndex(where: { $0.id == sourceId }) {
-            sourceItem = subItems.remove(at: sourceIndex)
-        } else if let dockIndex = items.firstIndex(where: { $0.id == sourceId }) {
-            let extracted = items.remove(at: dockIndex)
-            if extracted.type == .app {
-                sourceItem = extracted
-            } else if extracted.type == .folder, let kids = extracted.subItems {
-                subItems.append(contentsOf: kids)
-            }
-        }
-
-        guard let item = sourceItem else {
-            items[folderIndex].subItems = subItems
+        var engine = hierarchyEngine
+        let success = engine.moveSubItem(folderId: folderId, sourceId: sourceId, targetId: targetId, placement: placement)
+        if success {
+            self.hierarchyEngine = engine
+            self.items = engine.items
             IconProvider.shared.invalidateCache(for: folderId)
             if activeFolder?.id == folderId {
-                activeFolder = items[folderIndex]
+                activeFolder = items.first(where: { $0.id == folderId })
             }
             saveConfig()
-            return
         }
-
-        let targetIndex = subItems.firstIndex(where: { $0.id == targetId }) ?? subItems.count
-        let destinationIndex: Int
-        switch placement {
-        case .before, .merge:
-            destinationIndex = targetIndex
-        case .after:
-            destinationIndex = min(targetIndex + 1, subItems.count)
-        }
-
-        subItems.insert(item, at: destinationIndex)
-        items[folderIndex].subItems = subItems
-        IconProvider.shared.invalidateCache(for: folderId)
-        if activeFolder?.id == folderId {
-            activeFolder = items[folderIndex]
-        }
-        saveConfig()
     }
 
     public func dissolveFolder(folderId: UUID) {
-        guard let index = items.firstIndex(where: { $0.id == folderId }) else { return }
-        let folder = items.remove(at: index)
-        if let subItems = folder.subItems {
-            for (offset, item) in subItems.enumerated() {
-                items.insert(item, at: index + offset)
+        var engine = hierarchyEngine
+        let success = engine.dissolveFolder(folderId: folderId)
+        if success {
+            self.hierarchyEngine = engine
+            self.items = engine.items
+            if activeFolder?.id == folderId {
+                activeFolder = nil
             }
+            saveConfig()
         }
-        if activeFolder?.id == folderId {
-            activeFolder = nil
-        }
-        saveConfig()
     }
 
     // MARK: - Reordering and Drop State
@@ -643,67 +552,26 @@ public final class DockViewModel: ObservableObject {
 
     public func moveItem(sourceId: UUID, targetId: UUID, placement: DropPlacement = .before) {
         guard sourceId != targetId else { return }
-
-        // Find and extract source item (from pinned items, unpinned running apps, or from a folder)
-        var sourceItem: DockItem?
-
-        if let sourceIndex = items.firstIndex(where: { $0.id == sourceId }) {
-            sourceItem = items.remove(at: sourceIndex)
-        } else if let unpinnedIndex = unpinnedRunningItems.firstIndex(where: { $0.id == sourceId }) {
-            var unpinned = unpinnedRunningItems.remove(at: unpinnedIndex)
-            unpinned.isPinned = true
-            sourceItem = unpinned
-        } else {
-            for folderIndex in items.indices where items[folderIndex].type == .folder {
-                if var children = items[folderIndex].subItems,
-                   let childIndex = children.firstIndex(where: { $0.id == sourceId }) {
-                    let folderId = items[folderIndex].id
-                    sourceItem = children.remove(at: childIndex)
-                    items[folderIndex].subItems = children
-                    if children.isEmpty {
-                        items.remove(at: folderIndex)
-                    }
-                    IconProvider.shared.invalidateCache(for: folderId)
-                    break
-                }
-            }
-        }
-
-        guard let item = sourceItem else { return }
-
-        guard let targetIndex = items.firstIndex(where: { $0.id == targetId }) else {
-            items.append(item)
+        var engine = hierarchyEngine
+        let success = engine.moveItem(
+            sourceId: sourceId,
+            targetId: targetId,
+            placement: placement,
+            unpinnedItems: &unpinnedRunningItems
+        )
+        if success {
+            self.hierarchyEngine = engine
+            self.items = engine.items
             saveConfig()
-            return
         }
-
-        let destinationIndex: Int
-        switch placement {
-        case .before:
-            destinationIndex = targetIndex
-        case .after:
-            destinationIndex = min(targetIndex + 1, items.count)
-        case .merge:
-            destinationIndex = targetIndex
-        }
-
-        items.insert(item, at: destinationIndex)
-        saveConfig()
     }
 
     public func moveItemToEnd(sourceId: UUID) {
-        var sourceItem: DockItem?
-
-        if let sourceIndex = items.firstIndex(where: { $0.id == sourceId }) {
-            sourceItem = items.remove(at: sourceIndex)
-        } else if let unpinnedIndex = unpinnedRunningItems.firstIndex(where: { $0.id == sourceId }) {
-            var unpinned = unpinnedRunningItems.remove(at: unpinnedIndex)
-            unpinned.isPinned = true
-            sourceItem = unpinned
-        }
-
-        if let item = sourceItem {
-            items.append(item)
+        var engine = hierarchyEngine
+        let success = engine.moveItemToEnd(sourceId: sourceId, unpinnedItems: &unpinnedRunningItems)
+        if success {
+            self.hierarchyEngine = engine
+            self.items = engine.items
             saveConfig()
         }
     }
@@ -779,25 +647,18 @@ public final class DockViewModel: ObservableObject {
     }
 
     public func insertSeparator(at index: Int) {
-        let safeIndex = max(0, min(index, items.count))
-        let separator = DockItem(
-            type: .separator,
-            title: "Séparateur",
-            isPinned: true
-        )
-        items.insert(separator, at: safeIndex)
+        var engine = hierarchyEngine
+        engine.insertSeparator(at: index)
+        self.hierarchyEngine = engine
+        self.items = engine.items
         saveConfig()
     }
 
     public func createEmptyFolder(at index: Int, title: String = "NOUVEAU DOSSIER") {
-        let safeIndex = max(0, min(index, items.count))
-        let folder = DockItem(
-            type: .folder,
-            title: title.uppercased(),
-            isPinned: true,
-            subItems: []
-        )
-        items.insert(folder, at: safeIndex)
+        var engine = hierarchyEngine
+        engine.createEmptyFolder(at: index, title: title)
+        self.hierarchyEngine = engine
+        self.items = engine.items
         saveConfig()
     }
 

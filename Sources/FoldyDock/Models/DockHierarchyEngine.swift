@@ -269,7 +269,7 @@ public struct DockHierarchyEngine: Equatable, Sendable {
     /// Inserts a visual separator at the specified index.
     public mutating func insertSeparator(at index: Int) {
         let safeIndex = max(0, min(index, items.count))
-        let separator = DockItem(type: .separator, title: "")
+        let separator = DockItem(type: .separator, title: "Séparateur")
         items.insert(separator, at: safeIndex)
     }
 
