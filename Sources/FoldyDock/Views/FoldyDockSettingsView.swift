@@ -51,9 +51,24 @@ public struct FoldyDockSettingsView: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 18) {
-                    // Section 1: Masquage automatique
+                    // Section 1: Démarrage & Masquage automatique
                     GroupBox {
                         VStack(alignment: .leading, spacing: 12) {
+                            Toggle("Lancer FoldyDock au démarrage du Mac", isOn: Binding(
+                                get: { viewModel.config.launchAtLogin },
+                                set: { newValue in
+                                    viewModel.setLaunchAtLogin(newValue)
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            .font(.system(size: 13, weight: .medium))
+
+                            Text("Démarre automatiquement FoldyDock lors de l'ouverture de votre session macOS.")
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(.secondary)
+
+                            Divider()
+
                             Toggle("Masquage automatique (Autohide)", isOn: Binding(
                                 get: { viewModel.config.autohideEnabled },
                                 set: { _ in viewModel.toggleAutohide() }

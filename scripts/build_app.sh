@@ -1,8 +1,16 @@
 #!/bin/bash
 set -e
 
-if [ -z "$DEVELOPER_DIR" ] && [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
-  export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+SWIFT_EXTRA_FLAGS=()
+if [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
+  if DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer" /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -license status >/dev/null 2>&1; then
+    export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+  else
+    SWIFTUI_MACRO="/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib"
+    if [ -f "$SWIFTUI_MACRO" ]; then
+      SWIFT_EXTRA_FLAGS+=(-Xswiftc -load-plugin-library -Xswiftc "$SWIFTUI_MACRO")
+    fi
+  fi
 fi
 
 CONFIGURATION="release"
@@ -26,11 +34,17 @@ done
 
 SCRATCH_DIR="/tmp/foldydock-build"
 echo "🚀 Compiling FoldyDock ($CONFIGURATION)..."
-swift build -c "$CONFIGURATION" --scratch-path "$SCRATCH_DIR"
+swift build -c "$CONFIGURATION" --scratch-path "$SCRATCH_DIR" "${SWIFT_EXTRA_FLAGS[@]}"
 
 BIN_PATH="$SCRATCH_DIR/arm64-apple-macosx/$CONFIGURATION/FoldyDock"
-
 if [ ! -f "$BIN_PATH" ]; then
+  BIN_PATH="$SCRATCH_DIR/$CONFIGURATION/FoldyDock"
+fi
+if [ ! -f "$BIN_PATH" ]; then
+  BIN_PATH=$(find "$SCRATCH_DIR" -type f -name "FoldyDock" -perm +111 2>/dev/null | grep -v "\.build" | head -n 1)
+fi
+
+if [ -z "$BIN_PATH" ] || [ ! -f "$BIN_PATH" ]; then
     echo "❌ Binary not found at $BIN_PATH"
     exit 1
 fi

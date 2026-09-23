@@ -925,6 +925,71 @@ final class DockViewModelTests: XCTestCase {
         XCTAssertTrue(decoded.showAppTitles)
         XCTAssertTrue(decoded.showFolderTitles)
     }
+    func testLaunchAtLoginConfigAndToggle() {
+        final class MockLaunchAtLoginProvider: LaunchAtLoginProviding, @unchecked Sendable {
+            var isEnabled: Bool = false
+            var setEnabledCallCount = 0
+
+            func setEnabled(_ enabled: Bool) -> Bool {
+                setEnabledCallCount += 1
+                isEnabled = enabled
+                return true
+            }
+        }
+
+        let mockProvider = MockLaunchAtLoginProvider()
+        mockProvider.isEnabled = false
+
+        let vm = DockViewModel(
+            persistenceService: persistenceService,
+            appObserver: AppObserverService.shared,
+            launchAtLoginService: mockProvider
+        )
+
+        XCTAssertFalse(vm.config.launchAtLogin)
+
+        vm.setLaunchAtLogin(true)
+        XCTAssertTrue(vm.config.launchAtLogin)
+        XCTAssertTrue(mockProvider.isEnabled)
+        XCTAssertEqual(mockProvider.setEnabledCallCount, 1)
+
+        let reloaded = persistenceService.loadConfig()
+        XCTAssertTrue(reloaded.launchAtLogin)
+
+        vm.toggleLaunchAtLogin()
+        XCTAssertFalse(vm.config.launchAtLogin)
+        XCTAssertFalse(mockProvider.isEnabled)
+        XCTAssertEqual(mockProvider.setEnabledCallCount, 2)
+    }
+
+    func testLaunchAtLoginSerializationAndDeserialization() throws {
+        var config = DockConfig.defaultConfig
+        config.launchAtLogin = true
+
+        let encoded = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(DockConfig.self, from: encoded)
+
+        XCTAssertTrue(decoded.launchAtLogin)
+    }
+
+    func testLaunchAtLoginBackwardCompatibilityDefaultsToFalse() throws {
+        let legacyJson = """
+        {
+            "autohideEnabled": true,
+            "autohideDelay": 0.3,
+            "showDelay": 0.0,
+            "iconSize": 52.0,
+            "items": [],
+            "showTrash": true,
+            "horizontalPadding": 12.0,
+            "verticalPadding": 12.0
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(DockConfig.self, from: legacyJson)
+        XCTAssertFalse(decoded.launchAtLogin)
+    }
 }
+
 
 

@@ -14,6 +14,7 @@ public struct DockConfig: Codable, Equatable, Sendable {
     public var labelDistance: Double // Fixed distance in points between icon and title/indicator (default: 10.0)
     public var showAppLauncher: Bool // Show FoldyDock Applications launcher at far left (default: true)
     public var hiddenAppOpacity: Double // Opacity of hidden/minimized apps (default: 0.5)
+    public var launchAtLogin: Bool // Launch FoldyDock at macOS startup (default: false)
 
     public var hideDelay: Double {
         get { autohideDelay }
@@ -38,6 +39,7 @@ public struct DockConfig: Codable, Equatable, Sendable {
         case labelDistance
         case showAppLauncher
         case hiddenAppOpacity
+        case launchAtLogin
     }
 
     public init(
@@ -53,7 +55,8 @@ public struct DockConfig: Codable, Equatable, Sendable {
         showFolderTitles: Bool = true,
         labelDistance: Double = 10.0,
         showAppLauncher: Bool = true,
-        hiddenAppOpacity: Double = 0.5
+        hiddenAppOpacity: Double = 0.5,
+        launchAtLogin: Bool = false
     ) {
         self.autohideEnabled = autohideEnabled
         self.autohideDelay = autohideDelay
@@ -68,6 +71,7 @@ public struct DockConfig: Codable, Equatable, Sendable {
         self.labelDistance = labelDistance
         self.showAppLauncher = showAppLauncher
         self.hiddenAppOpacity = hiddenAppOpacity
+        self.launchAtLogin = launchAtLogin
     }
 
     public init(from decoder: Decoder) throws {
@@ -85,6 +89,7 @@ public struct DockConfig: Codable, Equatable, Sendable {
         self.labelDistance = try container.decodeIfPresent(Double.self, forKey: .labelDistance) ?? 10.0
         self.showAppLauncher = try container.decodeIfPresent(Bool.self, forKey: .showAppLauncher) ?? true
         self.hiddenAppOpacity = try container.decodeIfPresent(Double.self, forKey: .hiddenAppOpacity) ?? 0.5
+        self.launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
     }
 
     /// Default dock configuration with standard macOS applications and an example folder.
@@ -150,7 +155,8 @@ public struct DockConfig: Codable, Equatable, Sendable {
             showDelay: 0.0,
             iconSize: 52.0,
             items: [finder, safari, commFolder, terminal, settings],
-            labelDistance: 10.0
+            labelDistance: 10.0,
+            launchAtLogin: false
         )
     }
 }

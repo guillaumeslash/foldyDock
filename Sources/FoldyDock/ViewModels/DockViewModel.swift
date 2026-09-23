@@ -49,23 +49,27 @@ public final class DockViewModel: ObservableObject {
 
     private let persistenceService: DockPersistenceService
     private let appObserver: AppObserverService
+    public let launchAtLoginService: LaunchAtLoginProviding
     private var cancellables = Set<AnyCancellable>()
 
     public convenience init() {
-        self.init(persistenceService: .shared, appObserver: .shared)
+        self.init(persistenceService: .shared, appObserver: .shared, launchAtLoginService: SMAppLaunchAtLoginProvider())
     }
 
     public convenience init(persistenceService: DockPersistenceService) {
-        self.init(persistenceService: persistenceService, appObserver: .shared)
+        self.init(persistenceService: persistenceService, appObserver: .shared, launchAtLoginService: SMAppLaunchAtLoginProvider())
     }
 
     public init(
         persistenceService: DockPersistenceService,
-        appObserver: AppObserverService
+        appObserver: AppObserverService,
+        launchAtLoginService: LaunchAtLoginProviding = SMAppLaunchAtLoginProvider()
     ) {
         self.persistenceService = persistenceService
         self.appObserver = appObserver
+        self.launchAtLoginService = launchAtLoginService
         self.config = persistenceService.loadConfig()
+        self.config.launchAtLogin = launchAtLoginService.isEnabled
         self.items = self.config.items.filter { $0.type != .settings }
 
         setupAppObserverCallbacks()
@@ -674,8 +678,23 @@ public final class DockViewModel: ObservableObject {
         saveConfig()
     }
 
+    public func setLaunchAtLogin(_ enabled: Bool) {
+        let success = launchAtLoginService.setEnabled(enabled)
+        if success {
+            config.launchAtLogin = enabled
+        } else {
+            config.launchAtLogin = launchAtLoginService.isEnabled
+        }
+        saveConfig()
+    }
+
+    public func toggleLaunchAtLogin() {
+        setLaunchAtLogin(!config.launchAtLogin)
+    }
+
     public func resetToDefaults() {
         config = DockConfig.defaultConfig
+        config.launchAtLogin = launchAtLoginService.isEnabled
         items = config.items.filter { $0.type != .settings }
         saveConfig()
         onResetDock?()
