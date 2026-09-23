@@ -24,10 +24,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+SCRATCH_DIR="/tmp/foldydock-build"
 echo "🚀 Compiling FoldyDock ($CONFIGURATION)..."
-swift build -c "$CONFIGURATION"
+swift build -c "$CONFIGURATION" --scratch-path "$SCRATCH_DIR"
 
-BIN_PATH=$(swift build -c "$CONFIGURATION" --show-bin-path)/FoldyDock
+BIN_PATH="$SCRATCH_DIR/arm64-apple-macosx/$CONFIGURATION/FoldyDock"
+
+if [ ! -f "$BIN_PATH" ]; then
+    echo "❌ Binary not found at $BIN_PATH"
+    exit 1
+fi
 
 APP_NAME="FoldyDock.app"
 DIST_DIR="build"

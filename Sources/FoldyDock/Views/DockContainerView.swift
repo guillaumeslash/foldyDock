@@ -90,6 +90,8 @@ public struct DockContainerView: View {
             }
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.items)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.unpinnedRunningItems)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.runningBundleIds)
         .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.config.showTrash)
         .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.config.showAppLauncher)
         .padding(.horizontal, viewModel.config.horizontalPadding)
@@ -101,11 +103,7 @@ public struct DockContainerView: View {
                     cornerRadius: cornerRadius
                 )
 
-                // Subtle frosted color tint
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color(white: 0.12).opacity(0.35))
-
-                // Glassmorphic border
+                // Elegant subtle border
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(
                         LinearGradient(
@@ -128,6 +126,7 @@ public struct DockContainerView: View {
             }
         )
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .shadow(color: Color.black.opacity(0.35), radius: 12, x: 0, y: 6)
         .coordinateSpace(name: "dockContainer")
         .onDrop(of: [.plainText, .utf8PlainText, .text], isTargeted: nil) { _ in
             defer {
@@ -199,3 +198,4 @@ private struct DockSizePreferenceKey: PreferenceKey {
         }
     }
 }
+

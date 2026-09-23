@@ -299,19 +299,7 @@ public struct FoldyDockSettingsView: View {
                             .toggleStyle(.switch)
                             .font(.system(size: 13, weight: .medium))
 
-                            Divider()
 
-                            Toggle("Afficher les pastilles d'épinglage", isOn: Binding(
-                                get: { viewModel.config.showPinBadges },
-                                set: { newValue in
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        viewModel.config.showPinBadges = newValue
-                                    }
-                                    viewModel.saveConfig()
-                                }
-                            ))
-                            .toggleStyle(.switch)
-                            .font(.system(size: 13, weight: .medium))
 
                             Divider()
 
@@ -459,6 +447,6 @@ public struct FoldyDockSettingsView: View {
                 .padding(20)
             }
         }
-        .frame(width: 420, height: 640)
+        .frame(width: 420, height: 580)
     }
 }

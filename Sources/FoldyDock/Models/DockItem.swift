@@ -7,6 +7,12 @@ public enum DockItemType: String, Codable, Sendable {
     case settings
 }
 
+public enum DropPlacement: Sendable {
+    case before
+    case after
+    case merge
+}
+
 public struct DockItem: Identifiable, Codable, Equatable, Sendable {
     public var id: UUID
     public var type: DockItemType
@@ -19,7 +25,7 @@ public struct DockItem: Identifiable, Codable, Equatable, Sendable {
     public init(
         id: UUID = UUID(),
         type: DockItemType,
-        title: String,
+        title: String = "",
         bundleIdentifier: String? = nil,
         appPath: String? = nil,
         isPinned: Bool = true,

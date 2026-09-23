@@ -31,11 +31,28 @@ public struct DockItemView: View {
         viewModel.windowCount(for: item)
     }
 
+    private var runningSubItems: [DockItem] {
+        guard item.type == .folder else { return [] }
+        return viewModel.runningSubItems(for: item)
+    }
+
+    private var isExpandedFolder: Bool {
+        item.type == .folder && !runningSubItems.isEmpty
+    }
+
     private var itemWidth: CGFloat {
         if item.type == .separator {
             return 14.0
         }
-        return max(iconSize + 12, iconSize * 1.22 + 4)
+        let baseWidth = max(iconSize + 12, iconSize * 1.22 + 4)
+        if isExpandedFolder {
+            let folderSize = iconSize * 0.82
+            let subAppSlotWidth = max(48.0, iconSize * 0.92)
+            let dividerAndPadding: CGFloat = 8.0 + 1.2 + 8.0 + 14.0
+            let totalRunningWidth = CGFloat(runningSubItems.count) * subAppSlotWidth + CGFloat(max(0, runningSubItems.count - 1)) * 6.0
+            return max(baseWidth, folderSize + dividerAndPadding + totalRunningWidth)
+        }
+        return baseWidth
     }
 
     private var folderFontSize: CGFloat {
@@ -44,7 +61,23 @@ public struct DockItemView: View {
 
     public var body: some View {
         ZStack(alignment: .center) {
-            // 1. Main Icon (App or Folder) - perfectly vertically centered
+            if isExpandedFolder {
+                ExpandedFolderBubbleView(
+                    viewModel: viewModel,
+                    folder: item,
+                    runningSubItems: runningSubItems,
+                    iconSize: iconSize,
+                    dockHeight: dockHeight,
+                    folderFontSize: folderFontSize,
+                    isMergeTarget: dropPlacement == .merge,
+                    dropPlacement: dropPlacement,
+                    onFolderTap: {
+                        viewModel.toggleFolderPopover(item)
+                    },
+                    contextMenuItems: AnyView(contextMenuItems)
+                )
+            } else {
+                // 1. Main Icon (App or Folder) - perfectly vertically centered
             ZStack(alignment: .center) {
                 // Insertion bar indicator on the left
                 if dropPlacement == .before {
@@ -147,12 +180,6 @@ public struct DockItemView: View {
                     }
                 }
                 .frame(width: item.type == .separator ? 14 : iconSize, height: iconSize)
-                .overlay(alignment: .topTrailing) {
-                    if viewModel.config.showPinBadges && item.isPinned && (item.type == .app || item.type == .folder) {
-                        PinBadgeView(size: 13)
-                            .offset(x: 3, y: -3)
-                    }
-                }
                 .dockBounce(isBouncing: viewModel.isItemBouncing(item))
             }
             .frame(width: item.type == .separator ? 14 : iconSize, height: iconSize)
@@ -205,8 +232,11 @@ public struct DockItemView: View {
             if isRunning {
                 runningIndicatorView
             }
+            }
         }
         .frame(width: itemWidth, height: dockHeight, alignment: .center)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: isExpandedFolder)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: runningSubItems.count)
         .help(item.title)
         .background(
             GeometryReader { geo in

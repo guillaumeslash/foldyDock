@@ -11,7 +11,6 @@ public struct DockConfig: Codable, Equatable, Sendable {
     public var verticalPadding: Double // Vertical dock padding per side (default: 12.0)
     public var showAppTitles: Bool // Show titles above app icons (default: true)
     public var showFolderTitles: Bool // Show titles above folder icons (default: true)
-    public var showPinBadges: Bool // Show pin badge on pinned items (default: true)
     public var labelDistance: Double // Fixed distance in points between icon and title/indicator (default: 10.0)
     public var showAppLauncher: Bool // Show FoldyDock Applications launcher at far left (default: true)
     public var hiddenAppOpacity: Double // Opacity of hidden/minimized apps (default: 0.5)
@@ -36,7 +35,6 @@ public struct DockConfig: Codable, Equatable, Sendable {
         case verticalPadding
         case showAppTitles
         case showFolderTitles
-        case showPinBadges
         case labelDistance
         case showAppLauncher
         case hiddenAppOpacity
@@ -53,7 +51,6 @@ public struct DockConfig: Codable, Equatable, Sendable {
         verticalPadding: Double = 12.0,
         showAppTitles: Bool = true,
         showFolderTitles: Bool = true,
-        showPinBadges: Bool = true,
         labelDistance: Double = 10.0,
         showAppLauncher: Bool = true,
         hiddenAppOpacity: Double = 0.5
@@ -68,7 +65,6 @@ public struct DockConfig: Codable, Equatable, Sendable {
         self.verticalPadding = verticalPadding
         self.showAppTitles = showAppTitles
         self.showFolderTitles = showFolderTitles
-        self.showPinBadges = showPinBadges
         self.labelDistance = labelDistance
         self.showAppLauncher = showAppLauncher
         self.hiddenAppOpacity = hiddenAppOpacity
@@ -86,7 +82,6 @@ public struct DockConfig: Codable, Equatable, Sendable {
         self.verticalPadding = try container.decodeIfPresent(Double.self, forKey: .verticalPadding) ?? 12.0
         self.showAppTitles = try container.decodeIfPresent(Bool.self, forKey: .showAppTitles) ?? true
         self.showFolderTitles = try container.decodeIfPresent(Bool.self, forKey: .showFolderTitles) ?? true
-        self.showPinBadges = try container.decodeIfPresent(Bool.self, forKey: .showPinBadges) ?? true
         self.labelDistance = try container.decodeIfPresent(Double.self, forKey: .labelDistance) ?? 10.0
         self.showAppLauncher = try container.decodeIfPresent(Bool.self, forKey: .showAppLauncher) ?? true
         self.hiddenAppOpacity = try container.decodeIfPresent(Double.self, forKey: .hiddenAppOpacity) ?? 0.5

@@ -287,6 +287,24 @@ final class DockViewModelTests: XCTestCase {
         XCTAssertFalse(runningIds.contains(nonRunningApp.id))
     }
 
+    func testRunningSubItemsForFolderReturnsOrderedRunningApps() {
+        let runningApp = DockItem(type: .app, title: "Finder", bundleIdentifier: "com.apple.finder")
+        let nonRunningApp = DockItem(type: .app, title: "Fake", bundleIdentifier: "com.nonexistent.fakeapp.unique123")
+        let folder = DockItem(type: .folder, title: "Dossier", subItems: [runningApp, nonRunningApp])
+        let config = DockConfig(items: [folder])
+        persistenceService.saveConfig(config)
+
+        let vm = DockViewModel(persistenceService: persistenceService)
+        let runningItems = vm.runningSubItems(for: folder)
+
+        XCTAssertEqual(runningItems.count, 1)
+        XCTAssertEqual(runningItems.first?.id, runningApp.id)
+        XCTAssertEqual(runningItems.first?.title, "Finder")
+
+        // Non-running app must not be in runningSubItems
+        XCTAssertFalse(runningItems.contains(where: { $0.id == nonRunningApp.id }))
+    }
+
     func testFolderWithMoreThanFourApps() {
         let apps = (1...7).map {
             DockItem(type: .app, title: "App \($0)", bundleIdentifier: "com.test.app\($0)")
@@ -686,7 +704,6 @@ final class DockViewModelTests: XCTestCase {
         XCTAssertEqual(config.labelDistance, 10.0)
         XCTAssertTrue(config.showAppTitles)
         XCTAssertTrue(config.showFolderTitles)
-        XCTAssertTrue(config.showPinBadges)
         XCTAssertEqual(config.dockHeight, 52.0 + 12.0 * 2)
 
         let vm = DockViewModel(persistenceService: persistenceService)
@@ -694,7 +711,7 @@ final class DockViewModelTests: XCTestCase {
     }
 
     func testNewConfigOptionsSerializationAndDeserialization() throws {
-        var config = DockConfig(
+        let config = DockConfig(
             autohideEnabled: false,
             autohideDelay: 0.5,
             iconSize: 64.0,
@@ -704,7 +721,6 @@ final class DockViewModelTests: XCTestCase {
             verticalPadding: 8.0,
             showAppTitles: false,
             showFolderTitles: false,
-            showPinBadges: false,
             labelDistance: 14.0
         )
 
@@ -716,7 +732,6 @@ final class DockViewModelTests: XCTestCase {
         XCTAssertEqual(decoded.labelDistance, 14.0)
         XCTAssertFalse(decoded.showAppTitles)
         XCTAssertFalse(decoded.showFolderTitles)
-        XCTAssertFalse(decoded.showPinBadges)
         XCTAssertEqual(decoded.dockHeight, 64.0 + 8.0 * 2)
     }
 
@@ -726,7 +741,6 @@ final class DockViewModelTests: XCTestCase {
         vm.config.verticalPadding = 16.0
         vm.config.showAppTitles = false
         vm.config.showFolderTitles = false
-        vm.config.showPinBadges = false
         vm.saveConfig()
 
         let reloaded = persistenceService.loadConfig()
@@ -734,7 +748,6 @@ final class DockViewModelTests: XCTestCase {
         XCTAssertEqual(reloaded.verticalPadding, 16.0)
         XCTAssertFalse(reloaded.showAppTitles)
         XCTAssertFalse(reloaded.showFolderTitles)
-        XCTAssertFalse(reloaded.showPinBadges)
     }
 
     func testShowDelayAndHideDelayConfigAndPersistence() throws {
@@ -880,5 +893,38 @@ final class DockViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isItemHidden(folderMixed))
         XCTAssertEqual(vm.hiddenSubItemIds(for: folderMixed), [testApp.id])
     }
+
+    func testLegacyConfigFieldsBackwardCompatibility() throws {
+        // JSON containing legacy fields (liquidGlassIntensity, backgroundBlurRadius, showPinBadges)
+        // should decode successfully into DockConfig without crashing
+        let legacyJson = """
+        {
+            "autohideEnabled": true,
+            "autohideDelay": 0.3,
+            "showDelay": 0.0,
+            "iconSize": 52.0,
+            "items": [],
+            "showTrash": true,
+            "horizontalPadding": 12.0,
+            "verticalPadding": 12.0,
+            "showAppTitles": true,
+            "showFolderTitles": true,
+            "showPinBadges": true,
+            "labelDistance": 10.0,
+            "showAppLauncher": true,
+            "hiddenAppOpacity": 0.5,
+            "liquidGlassIntensity": 0.8,
+            "backgroundBlurRadius": 20.0
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(DockConfig.self, from: legacyJson)
+        XCTAssertEqual(decoded.iconSize, 52.0)
+        XCTAssertEqual(decoded.horizontalPadding, 12.0)
+        XCTAssertEqual(decoded.verticalPadding, 12.0)
+        XCTAssertTrue(decoded.showAppTitles)
+        XCTAssertTrue(decoded.showFolderTitles)
+    }
 }
+
 

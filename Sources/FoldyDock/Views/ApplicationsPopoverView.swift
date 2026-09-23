@@ -147,8 +147,7 @@ public struct ApplicationsPopoverView: View {
                     blendingMode: .behindWindow,
                     cornerRadius: 16
                 )
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(white: 0.14).opacity(0.35))
+
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(
                         LinearGradient(

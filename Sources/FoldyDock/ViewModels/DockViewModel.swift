@@ -2,11 +2,6 @@ import Foundation
 import Combine
 import AppKit
 
-public enum DropPlacement: Sendable {
-    case before
-    case after
-    case merge
-}
 
 @MainActor
 public final class DockViewModel: ObservableObject {
@@ -223,6 +218,10 @@ public final class DockViewModel: ObservableObject {
         }
     }
 
+    public var runningBundleIds: Set<String> {
+        appObserver.runningBundleIds
+    }
+
     public func isItemRunning(_ item: DockItem) -> Bool {
         item.isRunning(in: appObserver.runningBundleIds)
     }
@@ -235,6 +234,11 @@ public final class DockViewModel: ObservableObject {
     public func runningSubItemIds(for folder: DockItem) -> Set<UUID> {
         guard let subs = folder.subItems else { return [] }
         return Set(subs.filter { isItemRunning($0) }.map(\.id))
+    }
+
+    public func runningSubItems(for folder: DockItem) -> [DockItem] {
+        guard let subs = folder.subItems else { return [] }
+        return subs.filter { isItemRunning($0) }
     }
 
     public func windowCount(for item: DockItem) -> Int {

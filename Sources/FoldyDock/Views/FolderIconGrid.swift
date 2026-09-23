@@ -5,6 +5,7 @@ public struct FolderIconGrid: View {
     public let item: DockItem
     public let size: CGFloat
     public var isHighlighted: Bool
+    public var showBackground: Bool
     public var bouncingSubItemIds: Set<UUID>
     public var runningSubItemIds: Set<UUID>
     public var subItemWindowCounts: [UUID: Int]
@@ -15,6 +16,7 @@ public struct FolderIconGrid: View {
         item: DockItem,
         size: CGFloat = 52.0,
         isHighlighted: Bool = false,
+        showBackground: Bool = true,
         bouncingSubItemIds: Set<UUID> = [],
         runningSubItemIds: Set<UUID> = [],
         subItemWindowCounts: [UUID: Int] = [:],
@@ -24,6 +26,7 @@ public struct FolderIconGrid: View {
         self.item = item
         self.size = size
         self.isHighlighted = isHighlighted
+        self.showBackground = showBackground
         self.bouncingSubItemIds = bouncingSubItemIds
         self.runningSubItemIds = runningSubItemIds
         self.subItemWindowCounts = subItemWindowCounts
@@ -37,8 +40,9 @@ public struct FolderIconGrid: View {
 
     public var body: some View {
         ZStack {
-            // iOS-style squircle background with highlight state
-            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
+            if showBackground {
+                // iOS-style squircle background with highlight state
+                RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
                 .fill(
                     isHighlighted
                         ? LinearGradient(
@@ -103,6 +107,7 @@ public struct FolderIconGrid: View {
                     y: 0
                 )
                 .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isHighlighted)
+            }
 
             // Content: dynamic scalable mini icons
             if subItems.isEmpty {
